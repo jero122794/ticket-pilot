@@ -56,7 +56,9 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
 }
 
 #[tauri::command]
-pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings: Settings) -> AppResult<Settings> {
+pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, mut settings: Settings) -> AppResult<Settings> {
+    // Los tickets agregados a mano los administra el backend; no se toman del formulario.
+    settings.extra_task_ids = state.settings().extra_task_ids;
     let team_changed = settings.team_id != state.settings().team_id;
     state.save_settings(settings)?;
     if team_changed {

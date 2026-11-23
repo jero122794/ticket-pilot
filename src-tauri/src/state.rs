@@ -28,6 +28,9 @@ pub struct Cache {
     pub last_error: Option<String>,
     /// Listas a las que el usuario no tiene acceso (tiene tickets ahí, pero no ve la carpeta).
     pub no_access: std::collections::HashSet<String>,
+    /// Tareas compartidas que no hay que volver a leer hasta cierto momento (ms):
+    /// no están asignadas al usuario o llevan mucho tiempo cerradas.
+    pub shared_skip: HashMap<String, i64>,
     /// Último recordatorio enviado por ticket (ms).
     pub reminded: HashMap<String, i64>,
 }
@@ -117,7 +120,7 @@ pub fn bucket(task: &Task, s: &Settings) -> Bucket {
         Bucket::Reopened
     } else if kind == "closed" || kind == "done" || norm(&s.statuses.done) == st {
         Bucket::Done
-    } else if s.statuses.not_started.iter().any(|x| norm(x) == st) || kind == "unstarted" {
+    } else if s.statuses.not_started.iter().any(|x| norm(x) == st) || matches!(kind, "unstarted" | "open") {
         Bucket::NotStarted
     } else {
         Bucket::InProgress
@@ -178,6 +181,8 @@ pub struct TicketView {
     pub missing_fields: Vec<String>,
     pub worked_ms: i64,
     pub session_state: Option<String>,
+    /// Agregado a mano por enlace (no llega en la búsqueda de asignadas).
+    pub manual: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -274,6 +279,7 @@ pub async fn snapshot(state: &AppState, syncing: bool) -> AppResult<Snapshot> {
                 missing_fields: missing,
                 worked_ms: worked.get(&t.id).copied().unwrap_or(0),
                 session_state,
+                manual: s.extra_task_ids.contains(&t.id),
             }
         })
         .collect();

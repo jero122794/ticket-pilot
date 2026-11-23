@@ -29,6 +29,8 @@ export interface Ticket {
   missingFields: string[];
   workedMs: number;
   sessionState?: SessionState | null;
+  /** Agregado a mano por enlace (compartido, no llega en la búsqueda de asignadas). */
+  manual: boolean;
 }
 
 export interface Counts {
@@ -209,6 +211,8 @@ export const api = {
   saveFields: (taskId: string, values: FieldInput[]) => invoke<void>("save_fields", { taskId, values }),
   requiredFields: () => invoke<RequiredField[]>("list_required_fields"),
   setFieldApplies: (name: string, applies: boolean) => invoke<void>("set_field_applies", { name, applies }),
+  addTaskByRef: (reference: string) => invoke<string>("add_task_by_ref", { reference }),
+  removeManualTask: (taskId: string) => invoke<void>("remove_manual_task", { taskId }),
 };
 
 // ---------- hooks ----------

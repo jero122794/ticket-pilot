@@ -98,6 +98,66 @@ impl ClickUp {
         self.send(self.req(Method::GET, &format!("/task/{task_id}"))).await
     }
 
+    /// Tareas, listas y carpetas compartidas con el usuario. La búsqueda de
+    /// "asignadas a mí" del workspace no incluye lo que vive en carpetas sin acceso.
+    pub async fn shared(&self, team_id: &str) -> AppResult<SharedHierarchy> {
+        // Se lee como JSON libre: en la práctica los ids pueden llegar como número
+        // o como objeto, aunque la documentación diga texto.
+        let v: Value = self.send(self.req(Method::GET, &format!("/team/{team_id}/shared"))).await?;
+        let shared = v.get("shared").unwrap_or(&v);
+        log::debug!("forma de /shared: {}", shape(shared, 2));
+        let ids = |key: &str| -> Vec<String> {
+            shared
+                .get(key)
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(id_of).collect())
+                .unwrap_or_default()
+        };
+        Ok(SharedHierarchy {
+            tasks: ids("tasks"),
+            lists: ids("lists").into_iter().map(|id| NamedRef { id, name: None }).collect(),
+            folders: ids("folders").into_iter().map(|id| NamedRef { id, name: None }).collect(),
+        })
+    }
+
+    pub async fn folder_lists(&self, folder_id: &str) -> AppResult<Vec<NamedRef>> {
+        let env: ListsEnvelope = self.send(self.req(Method::GET, &format!("/folder/{folder_id}/list"))).await?;
+        Ok(env.lists)
+    }
+
+    /// Tareas de una lista asignadas al usuario (paginando de 100 en 100).
+    pub async fn list_tasks(&self, list_id: &str, user_id: u64, include_closed: bool, date_done_gt: Option<i64>) -> AppResult<Vec<Task>> {
+        let mut out = Vec::new();
+        for page in 0..20u32 {
+            let mut params: Vec<(String, String)> = vec![
+                ("page".into(), page.to_string()),
+                ("assignees[]".into(), user_id.to_string()),
+                ("subtasks".into(), "true".into()),
+                ("include_closed".into(), include_closed.to_string()),
+            ];
+            if let Some(ts) = date_done_gt {
+                params.push(("date_done_gt".into(), ts.to_string()));
+            }
+            let rb = self.req(Method::GET, &format!("/list/{list_id}/task")).query(&params);
+            let p: TasksPage = self.send(rb).await?;
+            let n = p.tasks.len();
+            out.extend(p.tasks);
+            if p.last_page.unwrap_or(n < 100) || n == 0 {
+                break;
+            }
+        }
+        Ok(out)
+    }
+
+    /// Tarea por su código personalizado (p. ej. "TKM-20742").
+    pub async fn task_by_custom_id(&self, custom_id: &str, team_id: &str) -> AppResult<Task> {
+        self.send(
+            self.req(Method::GET, &format!("/task/{custom_id}"))
+                .query(&[("custom_task_ids", "true"), ("team_id", team_id)]),
+        )
+        .await
+    }
+
     pub async fn list_fields(&self, list_id: &str) -> AppResult<Vec<FieldDef>> {
         let env: FieldsEnvelope = self
             .send(self.req(Method::GET, &format!("/list/{list_id}/field")))
@@ -149,6 +209,32 @@ impl ClickUp {
                 })),
         )
         .await
+    }
+}
+
+/// Id de un elemento que puede venir como texto, número u objeto con "id".
+fn id_of(v: &Value) -> Option<String> {
+    match v {
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::Object(o) => o.get("id").and_then(id_of),
+        _ => None,
+    }
+}
+
+/// Describe la estructura de un JSON (claves y tipos, sin valores) para diagnóstico.
+fn shape(v: &Value, depth: usize) -> String {
+    match v {
+        Value::Object(o) if depth > 0 => format!(
+            "{{{}}}",
+            o.iter().map(|(k, x)| format!("{k}: {}", shape(x, depth - 1))).collect::<Vec<_>>().join(", ")
+        ),
+        Value::Object(_) => "objeto".into(),
+        Value::Array(a) => format!("[{} × {}]", a.len(), a.first().map(|x| shape(x, depth.saturating_sub(1))).unwrap_or_else(|| "vacío".into())),
+        Value::String(_) => "texto".into(),
+        Value::Number(_) => "número".into(),
+        Value::Bool(_) => "bool".into(),
+        Value::Null => "null".into(),
     }
 }
 

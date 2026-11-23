@@ -120,6 +120,13 @@ pub struct Task {
     pub time_spent: Option<i64>,
     #[serde(default)]
     pub custom_fields: Vec<TaskField>,
+    #[serde(default)]
+    pub assignees: Vec<UserRef>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserRef {
+    pub id: u64,
 }
 
 impl Task {
@@ -143,6 +150,20 @@ impl Task {
     pub fn display_id(&self) -> &str {
         self.custom_id.as_deref().unwrap_or(&self.id)
     }
+}
+
+/// Lo compartido con el usuario: tareas sueltas (ids), listas y carpetas.
+#[derive(Debug, Clone, Default)]
+pub struct SharedHierarchy {
+    pub tasks: Vec<String>,
+    pub lists: Vec<NamedRef>,
+    pub folders: Vec<NamedRef>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ListsEnvelope {
+    #[serde(default)]
+    pub lists: Vec<NamedRef>,
 }
 
 #[derive(Debug, Deserialize)]

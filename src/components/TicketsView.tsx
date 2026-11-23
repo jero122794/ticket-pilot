@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Pause, Play, Search, Square } from "lucide-react";
+import { ArrowUpRight, Link2, Pause, Play, Search, Square, X } from "lucide-react";
 
 import { api, asAppError, liveWorked, useNow } from "../lib/api";
 import type { Bucket, Current, Punch, Snapshot, Ticket } from "../lib/api";
 import { clock, duration, hhmm, shortDate } from "../lib/format";
-import { Button, Clock, Dialog, IconButton, Input, Textarea } from "../ui";
+import { Button, Clock, Dialog, Field, IconButton, Input, Textarea } from "../ui";
 import type { Act } from "../windows/MainWindow";
 
 interface Props {
@@ -37,6 +37,7 @@ export default function TicketsView({ snap, act, onFill }: Props) {
   const [q, setQ] = useState("");
   const [pauseOpen, setPauseOpen] = useState(false);
   const [stopTarget, setStopTarget] = useState<StopTarget | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const count = (f: Filter) =>
     f === "open" ? snap.counts.notStarted + snap.counts.inProgress + snap.counts.reopened : snap.counts[f];
@@ -65,6 +66,9 @@ export default function TicketsView({ snap, act, onFill }: Props) {
             <Search />
             <Input aria-label="Buscar ticket" placeholder="grep código, nombre o estado" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <Link2 /> agregar por enlace
+          </Button>
         </div>
 
         <div role="table" aria-label="Tickets asignados">
@@ -98,6 +102,7 @@ export default function TicketsView({ snap, act, onFill }: Props) {
         </div>
       </div>
 
+      <AddDialog open={addOpen} onClose={() => setAddOpen(false)} act={act} />
       <PauseDialog open={pauseOpen} onClose={() => setPauseOpen(false)} act={act} />
       <StopDialog target={stopTarget} onClose={() => setStopTarget(null)} act={act} onFill={onFill} />
     </>
@@ -252,6 +257,12 @@ function Row({
       <div role="cell" style={{ minWidth: 0 }}>
         <div className="ticket__name truncate" title={t.name}>
           {t.name}
+          {t.manual && (
+            <span className="muted" title="Compartido contigo; agregado por enlace">
+              {" "}
+              [compartido]
+            </span>
+          )}
         </div>
         {t.missingFields.length > 0 && (
           <button type="button" className="ticket__missing" title={t.missingFields.join(", ")} onClick={() => onFill(t.id)}>
@@ -289,8 +300,75 @@ function Row({
         <IconButton size="sm" label="Abrir en ClickUp" onClick={() => api.openUrl(t.url)}>
           <ArrowUpRight />
         </IconButton>
+        {t.manual && !t.sessionState && (
+          <IconButton
+            size="sm"
+            label={`Dejar de seguir ${t.label}`}
+            onClick={() => act(async () => (await api.removeManualTask(t.id), api.snapshot()))}
+          >
+            <X />
+          </IconButton>
+        )}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- agregar por enlace
+
+function AddDialog({ open, onClose, act }: { open: boolean; onClose: () => void; act: Act }) {
+  const [ref, setRef] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const close = () => {
+    setRef("");
+    setError(null);
+    onClose();
+  };
+
+  async function add() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.addTaskByRef(ref);
+      await act(api.snapshot);
+      close();
+    } catch (e) {
+      setError(asAppError(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => !v && close()}
+      title="agregar por enlace"
+      description="Para tickets que te comparten sueltos («Shared with me»): ClickUp no los incluye en tus asignados. La app los seguirá en cada recarga y los quitará 30 días después de cerrados."
+      footer={
+        <>
+          <Button variant="ghost" onClick={close}>
+            cancelar
+          </Button>
+          <Button variant="primary" loading={busy} disabled={!ref.trim()} onClick={add}>
+            agregar
+          </Button>
+        </>
+      }
+    >
+      <Field label="Enlace o código" htmlFor="ref" error={error} hint="Ej. https://app.clickup.com/t/90133100517/TKM-20742 o TKM-20742">
+        <Input
+          id="ref"
+          autoFocus
+          value={ref}
+          aria-invalid={!!error}
+          onChange={(e) => setRef(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && ref.trim() && add()}
+        />
+      </Field>
+    </Dialog>
   );
 }
 

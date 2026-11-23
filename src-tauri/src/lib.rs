@@ -159,6 +159,8 @@ pub fn run() {
             fields::save_fields,
             fields::list_required_fields,
             fields::set_field_applies,
+            fields::add_task_by_ref,
+            fields::remove_manual_task,
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar TicketPilot");

@@ -256,3 +256,81 @@ pub async fn set_field_applies(app: AppHandle, state: State<'_, AppState>, name:
     broadcast(&app, false).await;
     Ok(())
 }
+
+/// Extrae el id de un enlace o código de ClickUp:
+/// "https://app.clickup.com/t/90133100517/TKM-20742" → ("TKM-20742", true)
+/// "https://app.clickup.com/t/17tqamf9fuc" o "17tqamf9fuc" → ("17tqamf9fuc", false)
+fn parse_ref(input: &str) -> Option<(String, bool)> {
+    let s = input.trim().trim_end_matches('/');
+    let last = s
+        .split(['?', '#'])
+        .next()?
+        .rsplit('/')
+        .next()?
+        .trim();
+    if last.is_empty() || last.contains(' ') {
+        return None;
+    }
+    let is_custom = last
+        .split_once('-')
+        .is_some_and(|(p, n)| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphabetic()) && n.chars().all(|c| c.is_ascii_digit()));
+    Some((if is_custom { last.to_uppercase() } else { last.to_owned() }, is_custom))
+}
+
+/// Agrega un ticket por enlace o código y lo sigue en cada recarga.
+#[tauri::command]
+pub async fn add_task_by_ref(app: AppHandle, state: State<'_, AppState>, reference: String) -> AppResult<String> {
+    let (id, custom) =
+        parse_ref(&reference).ok_or_else(|| AppError::invalid("Pega el enlace del ticket o su código, por ejemplo TKM-20742."))?;
+    let client = state.client().await?;
+    let task = if custom {
+        let team = state
+            .settings()
+            .team_id
+            .ok_or_else(|| AppError::invalid("Aún no se conoce el workspace. Espera la primera sincronización."))?;
+        client.task_by_custom_id(&id, &team).await?
+    } else {
+        client.task(&id).await?
+    };
+    let label = format!("{} {}", task.display_id(), task.name);
+
+    let mut s = state.settings();
+    if !s.extra_task_ids.contains(&task.id) {
+        s.extra_task_ids.push(task.id.clone());
+        state.save_settings(s)?;
+    }
+    {
+        let mut cache = state.cache.lock().await;
+        if !cache.tasks.iter().any(|t| t.id == task.id) {
+            cache.tasks.push(task);
+        }
+    }
+    state.request_refresh();
+    broadcast(&app, false).await;
+    Ok(label)
+}
+
+/// Deja de seguir un ticket agregado a mano.
+#[tauri::command]
+pub async fn remove_manual_task(app: AppHandle, state: State<'_, AppState>, task_id: String) -> AppResult<()> {
+    let mut s = state.settings();
+    s.extra_task_ids.retain(|x| x != &task_id);
+    state.save_settings(s)?;
+    state.cache.lock().await.tasks.retain(|t| t.id != task_id);
+    broadcast(&app, false).await;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_ref;
+
+    #[test]
+    fn enlaces_y_codigos() {
+        assert_eq!(parse_ref("https://app.clickup.com/t/90133100517/TKM-20742"), Some(("TKM-20742".into(), true)));
+        assert_eq!(parse_ref("https://app.clickup.com/t/17tqamf9fuc"), Some(("17tqamf9fuc".into(), false)));
+        assert_eq!(parse_ref(" tkm-20742 "), Some(("TKM-20742".into(), true)));
+        assert_eq!(parse_ref("https://app.clickup.com/t/86akepxj7?comment=1"), Some(("86akepxj7".into(), false)));
+        assert_eq!(parse_ref(""), None);
+    }
+}

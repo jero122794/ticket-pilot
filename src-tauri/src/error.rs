@@ -10,7 +10,7 @@ pub enum AppError {
     Unauthorized,
     #[error("ClickUp limitó las peticiones; se reintentará en {0} s.")]
     RateLimited(u64),
-    #[error("No hay conexión con ClickUp: {0}")]
+    #[error("{}", http_msg(.0))]
     Http(#[from] reqwest::Error),
     #[error("Base de datos local: {0}")]
     Db(#[from] rusqlite::Error),
@@ -66,3 +66,11 @@ impl Serialize for AppError {
 }
 
 pub type AppResult<T> = Result<T, AppError>;
+
+fn http_msg(e: &reqwest::Error) -> String {
+    if e.is_decode() {
+        format!("ClickUp respondió en un formato inesperado: {e}")
+    } else {
+        format!("No hay conexión con ClickUp: {e}")
+    }
+}

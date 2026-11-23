@@ -133,6 +133,20 @@ Los nombres corresponden a la lista **Tickets Activos**. Si en tu equipo se llam
 
 TicketPilot respeta los campos que alguien llenó a mano: no sobrescribe una «Fecha de Inicio» existente ni usa un espacio de pausa ocupado.
 
+### Tickets compartidos («Shared with me»)
+
+A veces te comparten un ticket suelto (por ejemplo, la subtarea de una reapertura) que vive en una carpeta a la que tu usuario no tiene acceso. En ClickUp aparece en **Shared with me**, pero la API de ClickUp **no lo devuelve** al pedir tus tareas asignadas.
+
+Para traerlo:
+
+1. En *Mis tickets*, pulsa **agregar por enlace**.
+2. Pega la URL del ticket (`https://app.clickup.com/t/90133100517/TKM-20742`) o solo su código (`TKM-20742`).
+3. Pulsa **agregar**.
+
+El ticket aparece con la marca `[compartido]` y se recarga como cualquier otro. Se deja de seguir solo cuando lleva 30 días cerrado o pierdes el acceso. También puedes quitarlo con ✕ en su fila.
+
+> Si la lista de ese ticket usa estados distintos (por ejemplo, no tiene «en desarrollo»), el cambio de estado puede fallar. El error aparece en **Sincronización** y el resto de campos se escribe igual.
+
 ---
 
 ## Campos pendientes
@@ -215,6 +229,7 @@ Si cambias algo, aparece abajo la barra **guardar ajustes**.
 |---|---|
 | «El token de ClickUp no es válido o expiró» | Genera un token nuevo en ClickUp y pégalo en Ajustes. |
 | Faltan tickets en la lista | La lista se recarga cada 5 minutos; pulsa ⟳ para forzarla. Revisa que el ticket esté asignado a ti y que no esté cerrado hace más de 30 días. |
+| Me asignaron un ticket y no aparece (está en «Shared with me») | ClickUp no incluye en «asignadas a mí» las tareas que te comparten sueltas desde una carpeta a la que no tienes acceso. Usa **agregar por enlace** en *Mis tickets* y pega la URL o el código (`TKM-20742`). Ver [Tickets compartidos](#tickets-compartidos-shared-with-me). |
 | Un ticket no muestra sus campos obligatorios | Puede estar en una carpeta a la que tu usuario no tiene acceso. TicketPilot usa entonces los campos que trae el propio ticket; pide acceso a esa carpeta si necesitas más. |
 | «La lista no tiene el campo …» | Alguien renombró el campo en ClickUp. Pon el nombre nuevo en **Ajustes › Avanzado** y luego **reintentar** en Sincronización. |
 | «El campo … no tiene la opción …» | Cambió una opción de lista desplegable, por ejemplo en «Estado de Pausa». Revisa los nombres en ClickUp. |

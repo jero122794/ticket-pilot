@@ -121,11 +121,45 @@ pub async fn refresh(state: &AppState) -> AppResult<()> {
         .unwrap_or_default();
 
     let mut seen = HashSet::new();
-    let tasks: Vec<_> = open
+    let mut tasks: Vec<_> = open
         .into_iter()
         .chain(recent_done)
         .filter(|t| seen.insert(t.id.clone()))
         .collect();
+
+    // Lo compartido ("Shared with me"): no aparece en la búsqueda del workspace.
+    if let Err(e) = add_shared(state, &client, &team_id, user.id, &mut tasks, &mut seen).await {
+        log::warn!("compartidos: {e}");
+    }
+
+    // Tickets agregados a mano: se leen uno por uno. Se dejan de seguir cuando ya
+    // no existen, se pierde el acceso o llevan más de 30 días cerrados.
+    let mut keep = Vec::new();
+    let cutoff = now_ms() - RECENT_DONE_DAYS * 86_400_000;
+    for id in &s.extra_task_ids {
+        if seen.contains(id) {
+            keep.push(id.clone());
+            continue;
+        }
+        match client.task(id).await {
+            Ok(t) if t.date_done.is_some_and(|d| d < cutoff) => {}
+            Ok(t) => {
+                keep.push(id.clone());
+                seen.insert(t.id.clone());
+                tasks.push(t);
+            }
+            Err(AppError::ClickUp { status: 401 | 403 | 404, .. }) => {}
+            Err(e) => {
+                log::warn!("ticket agregado {id}: {e}");
+                keep.push(id.clone());
+            }
+        }
+    }
+    if keep != s.extra_task_ids {
+        let mut fresh = state.settings();
+        fresh.extra_task_ids = keep;
+        state.save_settings(fresh)?;
+    }
 
     // Definiciones de campos de cada lista nueva (una petición por lista, una sola vez).
     let known: HashSet<String> = {
@@ -151,6 +185,91 @@ pub async fn refresh(state: &AppState) -> AppResult<()> {
     cache.tasks = tasks;
     cache.last_sync = Some(now_ms());
     cache.last_error = None;
+    Ok(())
+}
+
+/// Máximo de tareas compartidas sueltas que se leen por recarga (límite de la API: 100/min).
+const SHARED_TASKS_PER_REFRESH: usize = 40;
+/// Cada cuánto se revisa de nuevo una tarea compartida que no es del usuario.
+const SHARED_RECHECK_MS: i64 = 60 * 60_000;
+
+async fn add_shared(
+    state: &AppState,
+    client: &ClickUp,
+    team_id: &str,
+    user_id: u64,
+    tasks: &mut Vec<crate::clickup::Task>,
+    seen: &mut HashSet<String>,
+) -> AppResult<()> {
+    let shared = client.shared(team_id).await?;
+    let before = tasks.len();
+    let cutoff = now_ms() - RECENT_DONE_DAYS * 86_400_000;
+
+    // 1. Listas compartidas (y las de carpetas compartidas): mis tareas en ellas.
+    let mut lists: Vec<String> = shared.lists.iter().map(|l| l.id.clone()).collect();
+    for f in &shared.folders {
+        match client.folder_lists(&f.id).await {
+            Ok(ls) => lists.extend(ls.into_iter().map(|l| l.id)),
+            Err(e) => log::warn!("carpeta compartida {}: {e}", f.id),
+        }
+    }
+    lists.sort();
+    lists.dedup();
+    for list_id in &lists {
+        let open = client.list_tasks(list_id, user_id, false, None).await;
+        let done = client.list_tasks(list_id, user_id, true, Some(cutoff)).await;
+        for t in open.into_iter().chain(done).flatten() {
+            if seen.insert(t.id.clone()) {
+                tasks.push(t);
+            }
+        }
+    }
+
+    // 2. Tareas compartidas sueltas: se leen una por una y se quedan las mías.
+    let now = now_ms();
+    let pending: Vec<String> = {
+        let cache = state.cache.lock().await;
+        shared
+            .tasks
+            .iter()
+            .filter(|id| !seen.contains(*id))
+            .filter(|id| cache.shared_skip.get(*id).is_none_or(|until| *until <= now))
+            .take(SHARED_TASKS_PER_REFRESH)
+            .cloned()
+            .collect()
+    };
+    let mut skip = Vec::new();
+    for id in pending {
+        match client.task(&id).await {
+            Ok(t) => {
+                let mine = t.assignees.iter().any(|a| a.id == user_id);
+                let old = t.date_done.is_some_and(|d| d < cutoff);
+                if mine && !old {
+                    seen.insert(t.id.clone());
+                    tasks.push(t);
+                } else {
+                    skip.push(id);
+                }
+            }
+            Err(AppError::RateLimited(_)) => break,
+            Err(e) => {
+                log::warn!("tarea compartida {id}: {e}");
+                skip.push(id);
+            }
+        }
+    }
+    let mut cache = state.cache.lock().await;
+    for id in skip {
+        cache.shared_skip.insert(id, now + SHARED_RECHECK_MS);
+    }
+    let added: Vec<&str> = tasks[before..].iter().map(|t| t.display_id()).collect();
+    log::info!(
+        "compartidos: {} tareas, {} listas, {} carpetas; agregados: {:?}",
+        shared.tasks.len(),
+        shared.lists.len(),
+        shared.folders.len(),
+        added
+    );
     Ok(())
 }
 

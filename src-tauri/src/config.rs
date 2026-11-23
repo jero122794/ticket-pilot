@@ -64,6 +64,7 @@ impl Default for StatusNames {
                 "por iniciar".into(),
                 "análisis técnico".into(),
                 "reportado a desarrollo".into(),
+                "nuevo reporte".into(),
             ],
             reopened: vec!["reabierto".into()],
         }
@@ -123,6 +124,9 @@ pub struct Settings {
     /// Campos obligatorios que el desarrollador no llena (los llena otra área).
     pub ignored_fields: Vec<String>,
     pub email: EmailSettings,
+    /// Tickets agregados a mano (ids internos). ClickUp no devuelve en la búsqueda
+    /// de "asignadas a mí" las tareas compartidas sueltas ("Shared with me").
+    pub extra_task_ids: Vec<String>,
 }
 
 impl Default for Settings {
@@ -153,6 +157,7 @@ impl Default for Settings {
                 "N.º de semana del año".into(),
             ],
             email: EmailSettings::default(),
+            extra_task_ids: vec![],
         }
     }
 }
