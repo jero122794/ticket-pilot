@@ -1,0 +1,735 @@
+/* TicketPilot · terminal de fósforo ámbar sobre negro.
+   Monocromático: un solo tono (ámbar) en cinco intensidades. El "video inverso"
+   (fondo ámbar, texto negro) marca lo seleccionado y la acción principal. */
+
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+@import "@fontsource/vt323/400.css";
+
+/* ---------------------------------------------------------------- tokens */
+
+:root {
+  /* Cambiar el fósforo = cambiar estas cinco líneas (verde: #33ff66 / blanco: #e6e6e6). */
+  --hi: #ffc547; /* resaltado, cifras */
+  --fg: #eba824; /* texto */
+  --dim: #a27218; /* secundario */
+  --faint: #5c420f; /* bordes */
+  --line: #2a1e06; /* separadores, hover */
+  --bg: #000000;
+  --glow-color: rgb(255 176 0 / 0.35);
+
+  /* Alias que usan los componentes. */
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --card: var(--bg);
+  --ink: var(--hi);
+  --muted: var(--line);
+  --muted-foreground: var(--dim);
+  --border: var(--faint);
+  --border-strong: var(--dim);
+  --primary: var(--fg);
+  --primary-foreground: #000;
+  --destructive: var(--hi);
+  --ring: var(--hi);
+
+  --glow: 0 0 8px var(--glow-color);
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-crt: "VT323", "IBM Plex Mono", monospace;
+
+  color-scheme: dark;
+}
+
+/* Fósforo verde (P1), para comparar con el ámbar. */
+:root[data-phosphor="green"] {
+  --hi: #8affa8;
+  --fg: #46dc78;
+  --dim: #2a9450;
+  --faint: #175c31;
+  --line: #082a14;
+  --glow-color: rgb(70 220 120 / 0.35);
+}
+
+/* ------------------------------------------------------------------ base */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+  color: inherit;
+}
+
+input,
+textarea {
+  user-select: text;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+  font-size: inherit;
+}
+
+b,
+strong {
+  color: var(--hi);
+  font-weight: 600;
+}
+
+:focus-visible {
+  outline: 1px dashed var(--hi);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--fg);
+  color: #000;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--faint);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.muted,
+.hint {
+  color: var(--dim);
+}
+
+.hint {
+  font-size: 12px;
+}
+
+.hint--error {
+  color: var(--hi);
+}
+
+.hint--error::before {
+  content: "! ";
+}
+
+.truncate {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.num-t {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cursor de bloque. */
+.cursor::after {
+  content: "";
+  display: inline-block;
+  width: 0.6em;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--fg);
+  animation: tp-blink 1.06s steps(1) infinite;
+}
+
+/* --------------------------------------------------------------- button */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--faint);
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: lowercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: #000;
+}
+
+.btn:focus-visible {
+  outline: 1px dashed var(--hi);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+/* Acción principal: video inverso permanente. */
+.btn--primary,
+.btn--hero {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: #000;
+  font-weight: 600;
+}
+
+.btn--primary:hover:not(:disabled),
+.btn--hero:hover:not(:disabled) {
+  background: var(--hi);
+  border-color: var(--hi);
+}
+
+.btn--ghost,
+.btn--hero-ghost {
+  border-color: transparent;
+}
+
+/* Destructivo: inverso + marca "!" (el monocromo no deja usar rojo). */
+.btn--destructive {
+  background: var(--hi);
+  border-color: var(--hi);
+  color: #000;
+  font-weight: 600;
+}
+
+.btn--destructive::before {
+  content: "!";
+}
+
+.btn--sm {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.btn--lg {
+  height: 36px;
+  padding: 0 16px;
+}
+
+.btn--icon {
+  width: 30px;
+  padding: 0;
+}
+.btn--icon.btn--sm {
+  width: 26px;
+}
+.btn--icon.btn--lg {
+  width: 36px;
+}
+
+.round {
+  border-radius: 0;
+}
+
+/* -------------------------------------------------------------- inputs */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--dim);
+  text-transform: lowercase;
+}
+
+.label::after {
+  content: ":";
+}
+
+.input,
+.textarea,
+.select-trigger {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--bg);
+  border: 1px solid var(--faint);
+  border-radius: 0;
+  color: var(--hi);
+  font-size: 13px;
+  caret-color: var(--hi);
+}
+
+.textarea {
+  height: auto;
+  min-height: 72px;
+  padding: 6px 10px;
+  resize: vertical;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--faint);
+}
+
+.input:focus,
+.textarea:focus,
+.select-trigger:focus-visible,
+.select-trigger[data-state="open"] {
+  outline: none;
+  border-color: var(--fg);
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--hi);
+  border-style: dashed;
+}
+
+.input-icon {
+  position: relative;
+}
+
+.input-icon > svg {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translateY(-50%);
+  color: var(--dim);
+  pointer-events: none;
+}
+
+.input-icon > .input {
+  padding-left: 30px;
+}
+
+/* select (Radix) */
+.select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.select-trigger[data-placeholder] {
+  color: var(--faint);
+}
+
+.select-trigger svg {
+  width: 14px;
+  height: 14px;
+  color: var(--dim);
+  flex: none;
+}
+
+.select-content {
+  z-index: 60;
+  min-width: var(--radix-select-trigger-width, 180px);
+  max-height: min(320px, var(--radix-select-content-available-height, 320px));
+  overflow: auto;
+  padding: 2px;
+  background: var(--bg);
+  border: 1px solid var(--fg);
+  animation: tp-open 140ms steps(4);
+}
+
+.select-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 24px;
+  position: relative;
+  cursor: pointer;
+  outline: none;
+}
+
+.select-item[data-highlighted] {
+  background: var(--fg);
+  color: #000;
+}
+
+.select-indicator {
+  position: absolute;
+  left: 8px;
+  display: inline-flex;
+}
+
+.select-indicator svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* switch (Radix) → "[x]" / "[ ]" */
+.switch {
+  flex: none;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: var(--fg);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.switch::before {
+  content: "[ ]";
+  white-space: pre;
+}
+
+.switch[data-state="checked"]::before {
+  content: "[x]";
+  color: var(--hi);
+}
+
+.switch-thumb {
+  display: none;
+}
+
+/* checkbox (Radix) → "[x]" / "[ ]" */
+.checkbox {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--dim);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.checkbox::before {
+  content: "[ ]";
+  white-space: pre;
+}
+
+.checkbox[data-state="checked"]::before {
+  content: "[x]";
+  color: var(--hi);
+}
+
+.checkbox svg {
+  display: none;
+}
+
+.check-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+/* opciones seleccionables */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--faint);
+  background: none;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--fg);
+}
+
+.chip[aria-pressed="true"] {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: #000;
+}
+
+/* ---------------------------------------------------------- badge, kbd */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--dim);
+}
+
+.badge::before {
+  content: "[";
+}
+.badge::after {
+  content: "]";
+}
+
+.badge--muted {
+  color: var(--fg);
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+  border: 1px solid var(--faint);
+  font-size: 11px;
+  color: var(--dim);
+}
+
+/* Estado del cronómetro como glifo de terminal. */
+.status-dot {
+  display: inline-block;
+  width: 1ch;
+  flex: none;
+  color: var(--dim);
+  font-weight: 600;
+}
+
+.status-dot::before {
+  content: "·";
+}
+
+.status-dot[data-state="running"] {
+  color: var(--hi);
+}
+
+.status-dot[data-state="running"]::before {
+  content: "▶";
+  animation: tp-blink 1.06s steps(1) infinite;
+}
+
+.status-dot[data-state="paused"]::before {
+  content: "‖";
+  color: var(--fg);
+}
+
+.spin {
+  animation: tp-spin 0.8s steps(8) infinite;
+}
+
+/* ------------------------------------------------------ dialog, tooltip */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgb(0 0 0 / 0.8);
+}
+
+.dialog {
+  position: fixed;
+  z-index: 51;
+  left: 50%;
+  top: 50%;
+  width: min(540px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  transform: translate(-50%, -50%);
+  background: var(--bg);
+  border: 1px solid var(--fg);
+  box-shadow: 6px 6px 0 var(--line);
+  animation: tp-open 160ms steps(5);
+}
+
+.dialog--wide {
+  width: min(660px, calc(100vw - 32px));
+}
+
+.dialog__header {
+  padding: 18px 20px 10px;
+}
+
+/* Título incrustado en el borde, como un panel de TUI. */
+.dialog__title {
+  position: absolute;
+  top: -0.8em;
+  left: 14px;
+  padding: 0 6px;
+  background: var(--bg);
+  color: var(--hi);
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.dialog__desc {
+  color: var(--dim);
+}
+
+.dialog__body {
+  flex: 1;
+  overflow: auto;
+  padding: 6px 20px 16px;
+}
+
+.dialog__footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 20px;
+  border-top: 1px dashed var(--faint);
+}
+
+.dialog__close {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+}
+
+.tooltip {
+  z-index: 70;
+  padding: 2px 8px;
+  background: var(--fg);
+  color: #000;
+  font-size: 12px;
+  max-width: 280px;
+}
+
+/* ----------------------------------------------- toast (barra de estado) */
+
+.toast {
+  position: fixed;
+  z-index: 80;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+  padding: 2px 8px 2px 16px;
+  background: var(--fg);
+  color: #000;
+  font-weight: 500;
+  animation: tp-print 200ms steps(6);
+}
+
+.toast::before {
+  content: ">";
+  font-weight: 700;
+}
+
+.toast .btn {
+  color: #000;
+  border-color: transparent;
+}
+
+.toast .btn:hover {
+  background: #000;
+  color: var(--fg);
+}
+
+.mini-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px dashed var(--hi);
+  color: var(--hi);
+  font-size: 12px;
+}
+
+.mini-alert::before {
+  content: "!";
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------ animación */
+
+@keyframes tp-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes tp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* "Impreso": se revela de izquierda a derecha a saltos. */
+@keyframes tp-print {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+}
+
+@keyframes tp-open {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
