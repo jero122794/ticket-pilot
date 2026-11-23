@@ -495,6 +495,22 @@
   gap: 12px;
 }
 
+.schedule {
+  display: grid;
+  gap: 6px;
+}
+
+.schedule__row {
+  display: grid;
+  grid-template-columns: 140px 120px auto 120px;
+  align-items: center;
+  gap: 10px;
+}
+
+.schedule__row[data-off="true"] .check-row span {
+  color: var(--dim);
+}
+
 .checklist {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -549,6 +565,9 @@
   }
   .listbar .input-icon {
     width: 100%;
+  }
+  .schedule__row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto minmax(0, 1fr);
   }
   .grid-3,
   .checklist {

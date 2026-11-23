@@ -10,7 +10,6 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 
 use crate::clickup::{norm, ClickUp, FieldDef, TaskQuery};
-use crate::config::parse_hhmm;
 use crate::db::OutboxRow;
 use crate::error::{AppError, AppResult};
 use crate::state::{bucket, broadcast, missing_fields, now_ms, AppState, Bucket};
@@ -33,6 +32,7 @@ pub fn spawn(app: AppHandle) {
             let now = now_ms();
             let configured = secrets::get(secrets::CLICKUP_TOKEN).ok().flatten().is_some();
 
+            shift_end(&app, &state).await;
             let flushed = if configured { flush_outbox(&state).await } else { 0 };
             let dirty = state.dirty.swap(false, Ordering::SeqCst);
             let poll_due = now - last_poll >= (s.poll_minutes.max(1) as i64) * 60_000;
@@ -54,6 +54,7 @@ pub fn spawn(app: AppHandle) {
                 if configured {
                     remind(&app, &state).await;
                 }
+                shift_start(&app, &state).await;
                 if let Err(e) = mail::tick(&state).await {
                     log::warn!("correo diario: {e}");
                     state.cache.lock().await.last_error = Some(e.to_string());
@@ -398,22 +399,49 @@ async fn execute(state: &AppState, client: &ClickUp, task_id: &str, job: Job) ->
 // Recordatorios de campos sin llenar
 // ---------------------------------------------------------------------------
 
-fn within_work_hours(start: &str, end: &str) -> bool {
-    use chrono::{Datelike, Local, Timelike, Weekday};
-    let now = Local::now();
-    if matches!(now.weekday(), Weekday::Sat | Weekday::Sun) {
-        return false;
+/// Pausa por fin de turno (solo local) y avisa con una notificación.
+async fn shift_end(app: &AppHandle, state: &AppState) {
+    match crate::tracker::pause_for_shift_end(state).await {
+        Ok(Some(task)) => {
+            let body = format!(
+                "{} quedó en pausa por fin de turno. Esta pausa no se registra en ClickUp; al día siguiente dale play para continuar.",
+                task.display_id()
+            );
+            if let Err(e) = app.notification().builder().title("Fin de turno").body(&body).show() {
+                log::warn!("notificación: {e}");
+            }
+            broadcast(app, false).await;
+        }
+        Ok(None) => {}
+        Err(e) => log::warn!("fin de turno: {e}"),
     }
-    let m = now.hour() * 60 + now.minute();
-    match (parse_hhmm(start), parse_hhmm(end)) {
-        (Some(a), Some(b)) => a <= m && m < b,
-        _ => true,
+}
+
+/// Al empezar la jornada, recuerda (una vez al día) el ticket pausado por fin de turno.
+async fn shift_start(app: &AppHandle, state: &AppState) {
+    let s = state.settings();
+    let now = chrono::Local::now();
+    if !s.within_shift(now) {
+        return;
+    }
+    let Ok(Some(sess)) = state.db.current_session() else { return };
+    if sess.state != "paused" || !state.db.shift_paused(sess.id).unwrap_or(false) {
+        return;
+    }
+    let today = now.format("%Y-%m-%d").to_string();
+    if state.db.kv_get("shift_start_notified").ok().flatten().as_deref() == Some(today.as_str()) {
+        return;
+    }
+    let _ = state.db.kv_set("shift_start_notified", &today);
+    let body = format!("{} sigue en pausa desde el fin de turno. Dale play para continuar.", sess.task_label);
+    if let Err(e) = app.notification().builder().title("Empezó tu jornada").body(&body).show() {
+        log::warn!("notificación: {e}");
     }
 }
 
 async fn remind(app: &AppHandle, state: &AppState) {
     let s = state.settings();
-    if s.reminder_minutes == 0 || !within_work_hours(&s.work_start, &s.work_end) {
+    if s.reminder_minutes == 0 || !s.within_shift(chrono::Local::now()) {
         return;
     }
     let now = now_ms();

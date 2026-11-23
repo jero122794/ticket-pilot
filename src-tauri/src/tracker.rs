@@ -216,9 +216,54 @@ fn pause(state: &AppState, task: &Task, reason: &str, s: &Settings) -> AppResult
     })
 }
 
+/// Hora de salida (ms) a partir de la cual se pausa por fin de turno el tramo que
+/// empezó en `seg_start`. `None` si ese tramo empezó en un día libre o después de la
+/// salida: es tiempo extra a propósito y no se interrumpe.
+pub fn shift_end_for(s: &Settings, seg_start: i64) -> Option<i64> {
+    use chrono::Timelike;
+    let start = Local.timestamp_millis_opt(seg_start).single()?;
+    let (_, end) = s.shift_for(start.date_naive())?;
+    if start.hour() * 60 + start.minute() >= end {
+        return None;
+    }
+    let at = start.date_naive().and_hms_opt(end / 60, end % 60, 0)?;
+    Local.from_local_datetime(&at).earliest().map(|d| d.timestamp_millis())
+}
+
+/// Si el ticket que corre ya pasó la hora de salida, lo pausa solo en la app con
+/// la hora exacta de salida (aunque la app estuviera cerrada o el equipo suspendido).
+/// Solo se envía a ClickUp el registro de tiempo del tramo trabajado; ni campos de
+/// pausa, ni estado de pausa, ni motivo, ni comentario. Devuelve el ticket pausado.
+pub async fn pause_for_shift_end(state: &AppState) -> AppResult<Option<Task>> {
+    let s = state.settings();
+    if !s.auto_pause_shift {
+        return Ok(None);
+    }
+    let Some(run) = state.db.running_session()? else { return Ok(None) };
+    let Some(seg_start) = state.db.open_segment_start(run.id)? else { return Ok(None) };
+    let Some(end) = shift_end_for(&s, seg_start) else { return Ok(None) };
+    let now = now_ms();
+    if now < end {
+        return Ok(None);
+    }
+    let task = load_task(state, &run.task_id).await?;
+    state.db.tx(|c| {
+        let seg = db::close_segment(c, run.id, end)?;
+        push_segment(c, &task, seg, now)?;
+        db::insert_pause(c, run.id, &task.id, -1, 0, end, "Fin de turno")?;
+        db::set_session_state(c, run.id, "paused", now)
+    })?;
+    log::info!("fin de turno: {} pausado a las {}", task.display_id(), fmt_local(end));
+    Ok(Some(task))
+}
+
 /// Cierra la pausa abierta de una sesión y encola su fecha de fin.
 fn resume_in_tx(c: &Connection, task: &Task, session_id: i64, now: i64, s: &Settings) -> rusqlite::Result<()> {
     if let Some(p) = db::close_pause(c, session_id, now)? {
+        if p.slot < 0 {
+            // Fin de turno: la pausa nunca se registró en ClickUp, así que reanudar tampoco.
+            return Ok(());
+        }
         if p.slot > 0 {
             if let Some(field) = s.fields.pause_ends.get((p.slot - 1) as usize) {
                 push(c, task, Op::SetDate { field: field.clone(), ms: now }, now)?;
@@ -276,4 +321,26 @@ pub async fn stop(state: &AppState, task_id: &str) -> AppResult<()> {
     );
     state.db.tx(|c| push(c, &task, Op::Comment { text }, now))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ms(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> i64 {
+        let at = chrono::NaiveDate::from_ymd_opt(y, mo, d).unwrap().and_hms_opt(h, mi, 0).unwrap();
+        Local.from_local_datetime(&at).earliest().unwrap().timestamp_millis()
+    }
+
+    #[test]
+    fn fin_de_turno() {
+        let s = Settings::default();
+        // Jueves: empezó 9:00 → se pausa a las 17:00.
+        assert_eq!(shift_end_for(&s, ms(2026, 11, 26, 9, 0)), Some(ms(2026, 11, 26, 17, 0)));
+        // Viernes: salida 16:30.
+        assert_eq!(shift_end_for(&s, ms(2026, 11, 27, 6, 45)), Some(ms(2026, 11, 27, 16, 30)));
+        // Reanudó después de la salida (tiempo extra) o en sábado: no se interrumpe.
+        assert_eq!(shift_end_for(&s, ms(2026, 11, 26, 17, 10)), None);
+        assert_eq!(shift_end_for(&s, ms(2026, 11, 28, 10, 0)), None);
+    }
 }

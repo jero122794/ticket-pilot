@@ -89,6 +89,20 @@ Solo un ticket corre a la vez. Si le das Play a otro, el anterior se pausa solo,
 
 Pulsa **pausar**. La app te pide el motivo (por ejemplo «me reasignaron un ticket urgente»). Para confirmar sin el mouse, usa **Ctrl + Enter**. Para continuar, pulsa **reanudar**.
 
+### Fin de turno
+
+Cuando un ticket sigue corriendo a la hora de salida, TicketPilot lo pausa solo **a la hora exacta de salida**. Esto pasa aunque la app estuviera cerrada o el equipo suspendido. Esa pausa es **solo local**:
+
+- En ClickUp no se llena «Inicio/Fin Pausa N», «Estado de Pausa» ni «Motivo de Pausa», y no se escribe ningún comentario.
+- Tampoco cuenta en el número de pausas.
+- Sí se envía a ClickUp el registro de tiempo del tramo trabajado hasta la salida.
+
+Al día siguiente, al empezar tu jornada, te llega un recordatorio. Dale **reanudar** y el ticket sigue sin dejar rastro de pausa en ClickUp.
+
+Si reanudas después de la salida, la app lo toma como **tiempo extra a propósito** y no lo vuelve a pausar. Lo mismo pasa con lo que empieces en un día libre.
+
+La jornada viene configurada de lunes a jueves de 7:00 a 17:00 y los viernes de 7:00 a 16:30. Se cambia en **Ajustes → Jornada laboral**, donde también puedes desactivar la pausa automática.
+
 ### Finalizar (Stop)
 
 Pulsa **finalizar** y confirma.
@@ -207,7 +221,8 @@ El correo trae el tiempo trabajado hoy por ticket, los contadores y los campos p
 | Cuenta de ClickUp | Conectar o desconectar el token. Elegir el workspace, si tienes varios. Abrir la app al iniciar sesión. |
 | Play, Pausa y Stop | El estado al iniciar y al finalizar. Pedir motivo al pausar. Abrir el ticket en el navegador al dar Play. |
 | Campos que lleno yo | Qué campos obligatorios te aplican a ti. |
-| Recordatorios | Cada cuántos minutos (0 = apagados), horario laboral y cada cuánto recargar los tickets. |
+| Jornada laboral | Días que trabajas con su hora de entrada y de salida. Pausar al fin de turno (solo en la app, sin registrar pausa en ClickUp). |
+| Recordatorios | Cada cuántos minutos (0 = apagados) y cada cuánto recargar los tickets. Solo llegan dentro de la jornada. |
 | Resumen por correo | Servidor, cuenta, destinatarios y hora. |
 | Avanzado | Los nombres exactos de los campos en ClickUp. |
 
@@ -236,7 +251,7 @@ Si cambias algo, aparece abajo la barra **guardar ajustes**.
 | Un ticket no muestra sus campos obligatorios | Puede estar en una carpeta a la que tu usuario no tiene acceso. TicketPilot usa entonces los campos que trae el propio ticket; pide acceso a esa carpeta si necesitas más. |
 | «La lista no tiene el campo …» | Alguien renombró el campo en ClickUp. Pon el nombre nuevo en **Ajustes › Avanzado** y luego **reintentar** en Sincronización. |
 | «El campo … no tiene la opción …» | Cambió una opción de lista desplegable, por ejemplo en «Estado de Pausa». Revisa los nombres en ClickUp. |
-| No llegan las notificaciones | Revisa que el sistema operativo permita notificaciones de TicketPilot y que estés dentro del horario laboral configurado. |
+| No llegan las notificaciones | Revisa que el sistema operativo permita notificaciones de TicketPilot y que estés dentro de la jornada laboral configurada. |
 | El correo falla al enviar | Con Gmail, usa una **contraseña de aplicación**, no tu contraseña normal. Revisa servidor y puerto. |
 | (Linux) No guarda el token | Instala y desbloquea un llavero: `sudo apt install gnome-keyring`. |
 | No encuentro la ventana | Busca el ícono en la bandeja del sistema: clic izquierdo abre el panel y el clic derecho muestra el menú. |

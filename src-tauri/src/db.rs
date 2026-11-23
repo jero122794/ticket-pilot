@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS segments (
 CREATE INDEX IF NOT EXISTS ix_segments_session ON segments(session_id);
 CREATE INDEX IF NOT EXISTS ix_segments_time    ON segments(started_at, ended_at);
 
--- slot 1..3 = campos "Inicio/Fin Pausa N"; slot 0 = se registra como comentario.
+-- slot 1..3 = campos "Inicio/Fin Pausa N"; slot 0 = se registra como comentario;
+-- slot -1 = pausa por fin de turno (solo local, no va a ClickUp).
 CREATE TABLE IF NOT EXISTS pauses (
   id          INTEGER PRIMARY KEY,
   session_id  INTEGER NOT NULL REFERENCES sessions(id),
@@ -90,7 +91,7 @@ pub struct SessionRow {
 #[serde(rename_all = "camelCase")]
 pub struct Punch {
     pub at: i64,
-    /// start | resume | pause | stop
+    /// start | resume | pause | shift (fin de turno) | stop
     pub kind: String,
     pub note: String,
 }
@@ -221,7 +222,8 @@ impl Db {
                           '' AS note
                    FROM segments s WHERE s.task_id = ?1
                    UNION ALL
-                   SELECT started_at, 'pause', reason FROM pauses WHERE task_id = ?1
+                   SELECT started_at, CASE WHEN slot < 0 THEN 'shift' ELSE 'pause' END, reason
+                   FROM pauses WHERE task_id = ?1
                    UNION ALL
                    SELECT ended_at, 'stop', '' FROM sessions WHERE task_id = ?1 AND state = 'stopped'
                  ) ORDER BY at DESC LIMIT ?2",
@@ -292,7 +294,19 @@ impl Db {
     }
 
     pub fn pause_count(&self, task_id: &str) -> AppResult<i64> {
-        self.with(|c| c.query_row("SELECT COUNT(*) FROM pauses WHERE task_id = ?1", [task_id], |r| r.get(0)))
+        // Las pausas por fin de turno (slot < 0) no cuentan: no existen en ClickUp.
+        self.with(|c| c.query_row("SELECT COUNT(*) FROM pauses WHERE task_id = ?1 AND slot >= 0", [task_id], |r| r.get(0)))
+    }
+
+    /// ¿La sesión está en pausa por fin de turno?
+    pub fn shift_paused(&self, session_id: i64) -> AppResult<bool> {
+        self.with(|c| {
+            c.query_row(
+                "SELECT EXISTS(SELECT 1 FROM pauses WHERE session_id = ?1 AND ended_at IS NULL AND slot < 0)",
+                [session_id],
+                |r| r.get(0),
+            )
+        })
     }
 
     // ---------- outbox ----------

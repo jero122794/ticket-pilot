@@ -27,6 +27,7 @@ const PUNCH_LABEL: Record<Punch["kind"], string> = {
   start: "inicio",
   resume: "reanuda",
   pause: "pausa",
+  shift: "fin de turno",
   stop: "fin",
 };
 
@@ -159,14 +160,19 @@ function NowPanel({
   return (
     <section className="panel timecard" aria-label="Ticket activo">
       <span className="panel__title">
-        {running ? "ahora" : "en pausa"} <b>{cur.label}</b>
+        {running ? "ahora" : cur.offShift ? "fuera de turno" : "en pausa"} <b>{cur.label}</b>
       </span>
       <div className="timecard__main">
         <h2 className="timecard__title">{cur.name}</h2>
         <Clock className="clock" state={cur.state} text={clock(liveWorked(cur, now))} />
         <span className="timecard__status">
-          {running ? `corriendo desde las ${since ?? "--:--"}` : `en pausa desde las ${since ?? "--:--"}`}
+          {running
+            ? `corriendo desde las ${since ?? "--:--"}`
+            : cur.offShift
+              ? `pausado por fin de turno a las ${since ?? "--:--"} (no cuenta como pausa en ClickUp)`
+              : `en pausa desde las ${since ?? "--:--"}`}
           {cur.pauseCount > 0 && `, ${cur.pauseCount} ${cur.pauseCount === 1 ? "pausa" : "pausas"}`}
+          {running && cur.shiftEndAt && `, se pausa sola a las ${hhmm(cur.shiftEndAt)}`}
         </span>
         <div className="timecard__actions">
           {running ? (

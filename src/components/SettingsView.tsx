@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { api, asAppError } from "../lib/api";
-import type { FieldNames, Settings, Snapshot, Team } from "../lib/api";
+import type { FieldNames, Settings, Snapshot, Team, WorkDay } from "../lib/api";
 import { Button, Checkbox, Field, Input, Select, SwitchRow } from "../ui";
 
 interface Props {
@@ -26,6 +26,8 @@ function Section({ title, description, children }: { title: string; description?
 }
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+const DAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
 
 export default function SettingsView({ snap, notify }: Props) {
   const [s, setS] = useState<Settings | null>(null);
@@ -64,6 +66,8 @@ export default function SettingsView({ snap, notify }: Props) {
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS({ ...s, [k]: v });
   const setEmail = <K extends keyof Settings["email"]>(k: K, v: Settings["email"][K]) => setS({ ...s, email: { ...s.email, [k]: v } });
   const setField = <K extends keyof FieldNames>(k: K, v: FieldNames[K]) => setS({ ...s, fields: { ...s.fields, [k]: v } });
+  const setDay = (i: number, patch: Partial<WorkDay>) =>
+    setS({ ...s, schedule: s.schedule.map((d, j) => (j === i ? { ...d, ...patch } : d)) });
   const int = (v: string, min: number) => Math.max(min, Number.parseInt(v, 10) || 0);
 
   async function save() {
@@ -226,18 +230,47 @@ export default function SettingsView({ snap, notify }: Props) {
         )}
       </Section>
 
-      <Section title="Recordatorios" description="Notificación del sistema con los tickets en curso que tienen campos sin llenar.">
-        <div className="grid-3">
-          <Field label="Cada (minutos)" htmlFor="rem" hint="0 = desactivados">
-            <Input id="rem" type="number" min={0} value={s.reminderMinutes} onChange={(e) => set("reminderMinutes", int(e.target.value, 0))} />
-          </Field>
-          <Field label="Desde" htmlFor="ws">
-            <Input id="ws" type="time" value={s.workStart} onChange={(e) => set("workStart", e.target.value)} />
-          </Field>
-          <Field label="Hasta" htmlFor="we">
-            <Input id="we" type="time" value={s.workEnd} onChange={(e) => set("workEnd", e.target.value)} />
-          </Field>
+      <Section title="Jornada laboral" description="Los recordatorios solo llegan dentro de la jornada. Al llegar la hora de salida el cronómetro se pausa solo.">
+        <div className="schedule" role="table" aria-label="Horario por día">
+          {s.schedule.map((d, i) => (
+            <div key={DAYS[i]} className="schedule__row" role="row" data-off={!d.enabled}>
+              <label className="check-row" role="cell">
+                <Checkbox checked={d.enabled} onChange={(v) => setDay(i, { enabled: v })} />
+                <span>{DAYS[i]}</span>
+              </label>
+              <Input
+                type="time"
+                aria-label={`Entrada ${DAYS[i]}`}
+                disabled={!d.enabled}
+                value={d.start}
+                onChange={(e) => setDay(i, { start: e.target.value })}
+              />
+              <span className="muted" aria-hidden>
+                a
+              </span>
+              <Input
+                type="time"
+                aria-label={`Salida ${DAYS[i]}`}
+                disabled={!d.enabled}
+                value={d.end}
+                onChange={(e) => setDay(i, { end: e.target.value })}
+              />
+            </div>
+          ))}
         </div>
+        <SwitchRow
+          id="autoshift"
+          label="Pausar al fin de turno"
+          description="Pausa solo en la app: no llena Inicio/Fin de pausa ni el motivo en ClickUp. Si reanudas después de la salida, cuenta como tiempo extra y no se vuelve a pausar."
+          checked={s.autoPauseShift}
+          onChange={(v) => set("autoPauseShift", v)}
+        />
+      </Section>
+
+      <Section title="Recordatorios" description="Notificación del sistema con los tickets en curso que tienen campos sin llenar.">
+        <Field label="Cada (minutos)" htmlFor="rem" hint="0 = desactivados">
+          <Input id="rem" type="number" min={0} style={{ maxWidth: 120 }} value={s.reminderMinutes} onChange={(e) => set("reminderMinutes", int(e.target.value, 0))} />
+        </Field>
         <SwitchRow
           id="popup"
           label="Traer el panel al frente"

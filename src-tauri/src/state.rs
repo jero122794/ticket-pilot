@@ -240,6 +240,10 @@ pub struct CurrentView {
     pub missing_fields: Vec<String>,
     /// Marcas de reloj recientes (inicio, pausas, reanudaciones).
     pub punches: Vec<Punch>,
+    /// En pausa por fin de turno (no registrada en ClickUp).
+    pub off_shift: bool,
+    /// Hora en que se pausará sola por fin de turno, si está corriendo.
+    pub shift_end_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -331,7 +335,13 @@ pub async fn snapshot(state: &AppState, syncing: bool) -> AppResult<Snapshot> {
             let missing = task
                 .map(|t| missing_fields(t, cache.fields.get(&t.list.id), &s, &auto_filled(&s)))
                 .unwrap_or_default();
+            let off_shift = sess.state == "paused" && state.db.shift_paused(sess.id)?;
+            let shift_end_at = open_start
+                .filter(|_| s.auto_pause_shift)
+                .and_then(|st| crate::tracker::shift_end_for(&s, st));
             Some(CurrentView {
+                off_shift,
+                shift_end_at,
                 pause_count: state.db.pause_count(&sess.task_id)?,
                 punches: state.db.task_punches(&sess.task_id, 8)?,
                 task_id: sess.task_id,

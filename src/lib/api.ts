@@ -43,7 +43,7 @@ export interface Counts {
 
 export interface Punch {
   at: number;
-  kind: "start" | "resume" | "pause" | "stop";
+  kind: "start" | "resume" | "pause" | "shift" | "stop";
   note: string;
 }
 
@@ -58,6 +58,10 @@ export interface Current {
   pauseCount: number;
   missingFields: string[];
   punches: Punch[];
+  /** En pausa por fin de turno (no se registra en ClickUp). */
+  offShift: boolean;
+  /** Hora en que se pausará sola por fin de turno. */
+  shiftEndAt?: number | null;
 }
 
 export interface OutboxFailure {
@@ -114,6 +118,12 @@ export interface EmailSettings {
   weekdaysOnly: boolean;
 }
 
+export interface WorkDay {
+  enabled: boolean;
+  start: string;
+  end: string;
+}
+
 export interface Settings {
   teamId?: string | null;
   listIds: string[];
@@ -121,8 +131,9 @@ export interface Settings {
   statuses: StatusNames;
   pollMinutes: number;
   reminderMinutes: number;
-  workStart: string;
-  workEnd: string;
+  /** Lunes (0) a domingo (6). */
+  schedule: WorkDay[];
+  autoPauseShift: boolean;
   reminderPopup: boolean;
   openInBrowserOnPlay: boolean;
   askPauseReason: boolean;

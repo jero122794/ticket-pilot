@@ -74,7 +74,7 @@ export default function Widget() {
         ) : (
           <span>{snap.configured ? "sin ticket activo" : "ticketpilot"}</span>
         )}
-        {cur && state === "paused" && <span>en pausa</span>}
+        {cur && state === "paused" && <span>{cur.offShift ? "fin de turno" : "en pausa"}</span>}
         <span className="spacer" />
         {syncProblem && (
           <Tip label={syncProblem}>

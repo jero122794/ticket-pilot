@@ -103,6 +103,37 @@ impl Default for EmailSettings {
     }
 }
 
+/// Jornada de un día. `enabled = false` = día libre.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct WorkDay {
+    pub enabled: bool,
+    pub start: String,
+    pub end: String,
+}
+
+impl Default for WorkDay {
+    fn default() -> Self {
+        Self { enabled: true, start: "07:00".into(), end: "17:00".into() }
+    }
+}
+
+impl WorkDay {
+    /// Lunes a jueves 7:00–17:00, viernes 7:00–16:30, fin de semana libre.
+    pub fn default_week() -> Vec<WorkDay> {
+        let day = |enabled: bool, end: &str| WorkDay { enabled, start: "07:00".into(), end: end.into() };
+        vec![
+            day(true, "17:00"),
+            day(true, "17:00"),
+            day(true, "17:00"),
+            day(true, "17:00"),
+            day(true, "16:30"),
+            day(false, "17:00"),
+            day(false, "17:00"),
+        ]
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
@@ -113,8 +144,11 @@ pub struct Settings {
     pub statuses: StatusNames,
     pub poll_minutes: u64,
     pub reminder_minutes: u64,
-    pub work_start: String,
-    pub work_end: String,
+    /// Jornada por día de la semana, de lunes (0) a domingo (6).
+    pub schedule: Vec<WorkDay>,
+    /// Al llegar la hora de salida, pausar el cronómetro solo en la app
+    /// (esa pausa no se registra en ClickUp).
+    pub auto_pause_shift: bool,
     /// Al recordar campos pendientes, además de la notificación, traer la ventana al frente.
     pub reminder_popup: bool,
     pub open_in_browser_on_play: bool,
@@ -136,8 +170,8 @@ impl Default for Settings {
             statuses: StatusNames::default(),
             poll_minutes: 5,
             reminder_minutes: 60,
-            work_start: "08:00".into(),
-            work_end: "18:00".into(),
+            schedule: WorkDay::default_week(),
+            auto_pause_shift: true,
             reminder_popup: false,
             open_in_browser_on_play: false,
             ask_pause_reason: true,
@@ -160,6 +194,21 @@ impl Default for Settings {
 }
 
 impl Settings {
+    /// Jornada (inicio, fin) en minutos desde medianoche para una fecha; `None` = día libre.
+    pub fn shift_for(&self, date: chrono::NaiveDate) -> Option<(u32, u32)> {
+        use chrono::Datelike;
+        let d = self.schedule.get(date.weekday().num_days_from_monday() as usize)?;
+        let (a, b) = (parse_hhmm(&d.start)?, parse_hhmm(&d.end)?);
+        (d.enabled && a < b).then_some((a, b))
+    }
+
+    /// ¿La hora local está dentro de la jornada de ese día?
+    pub fn within_shift(&self, at: chrono::DateTime<chrono::Local>) -> bool {
+        use chrono::Timelike;
+        let m = at.hour() * 60 + at.minute();
+        self.shift_for(at.date_naive()).is_some_and(|(a, b)| a <= m && m < b)
+    }
+
     fn path(dir: &Path) -> PathBuf {
         dir.join("settings.json")
     }
@@ -187,4 +236,21 @@ pub fn parse_hhmm(s: &str) -> Option<u32> {
     let (h, m) = s.trim().split_once(':')?;
     let (h, m): (u32, u32) = (h.parse().ok()?, m.parse().ok()?);
     (h < 24 && m < 60).then_some(h * 60 + m)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    #[test]
+    fn jornada_por_defecto() {
+        let s = Settings::default();
+        let jue = NaiveDate::from_ymd_opt(2026, 11, 26).unwrap();
+        let vie = NaiveDate::from_ymd_opt(2026, 11, 27).unwrap();
+        let sab = NaiveDate::from_ymd_opt(2026, 11, 28).unwrap();
+        assert_eq!(s.shift_for(jue), Some((420, 1020)));
+        assert_eq!(s.shift_for(vie), Some((420, 990)));
+        assert_eq!(s.shift_for(sab), None);
+    }
 }
