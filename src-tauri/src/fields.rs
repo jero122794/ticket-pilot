@@ -6,7 +6,7 @@ use tauri::{AppHandle, State};
 
 use crate::clickup::{norm, FieldDef, Task};
 use crate::error::{AppError, AppResult};
-use crate::state::{broadcast, missing_fields, AppState};
+use crate::state::{auto_filled, broadcast, fresh_task, missing_fields, AppState};
 use crate::tracker::{self, Op};
 
 /// Tipos que el formulario sabe editar; el resto se completa en ClickUp.
@@ -88,10 +88,16 @@ async fn defs_for(state: &AppState, task: &Task) -> Vec<FieldDef> {
 #[tauri::command]
 pub async fn get_fill_form(state: State<'_, AppState>, task_id: String) -> AppResult<FillForm> {
     let s = state.settings();
-    // Se lee el ticket en vivo: alguien pudo llenar campos desde la última recarga.
-    let task = state.client().await?.task(&task_id).await?;
+    // En vivo (alguien pudo llenar campos en ClickUp) + lo guardado que sigue en cola.
+    let task = fresh_task(&state, &task_id).await?;
     let defs = defs_for(&state, &task).await;
-    let missing = missing_fields(&task, Some(&defs), &s, &[s.fields.end_date.as_str()]);
+    // Con cronómetro abierto, las fechas que pone TicketPilot no se piden (igual que al finalizar).
+    let skip: Vec<&str> = if state.db.open_session_for_task(&task.id)?.is_some() {
+        auto_filled(&s).to_vec()
+    } else {
+        vec![s.fields.end_date.as_str()]
+    };
+    let missing = missing_fields(&task, Some(&defs), &s, &skip);
     let fields: Vec<EditableField> = missing
         .iter()
         .filter_map(|name| {

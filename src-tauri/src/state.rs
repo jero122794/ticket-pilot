@@ -96,6 +96,36 @@ impl AppState {
     }
 }
 
+/// Ticket leído en vivo desde ClickUp, completado con los valores que el usuario
+/// ya guardó en la app y siguen en cola (aún no llegan a ClickUp). Sin red, usa la caché.
+pub async fn fresh_task(state: &AppState, task_id: &str) -> AppResult<Task> {
+    let cached = state.cached_task(task_id).await;
+    let live = match state.client().await?.task(task_id).await {
+        Ok(t) => t,
+        Err(e) => return cached.ok_or(e),
+    };
+    let mut merged = live;
+    if let Some(c) = &cached {
+        for f in merged.custom_fields.iter_mut() {
+            if !crate::clickup::has_value(&f.value) {
+                if let Some(cf) = c.custom_fields.iter().find(|x| x.id == f.id && crate::clickup::has_value(&x.value)) {
+                    f.value = cf.value.clone();
+                }
+            }
+        }
+    }
+    let mut cache = state.cache.lock().await;
+    if let Some(slot) = cache.tasks.iter_mut().find(|t| t.id == merged.id) {
+        *slot = merged.clone();
+    }
+    Ok(merged)
+}
+
+/// Campos que llena TicketPilot al dar Play/Stop: no se le piden al usuario al finalizar.
+pub fn auto_filled(s: &Settings) -> [&str; 3] {
+    [s.fields.end_date.as_str(), s.fields.start_date.as_str(), s.fields.reopened_date.as_str()]
+}
+
 pub fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
@@ -249,14 +279,6 @@ pub async fn snapshot(state: &AppState, syncing: bool) -> AppResult<Snapshot> {
                 Bucket::Done => counts.done += 1,
                 Bucket::Reopened => counts.reopened += 1,
             }
-            let missing = if b == Bucket::Done {
-                vec![]
-            } else {
-                missing_fields(t, cache.fields.get(&t.list.id), &s, &[s.fields.end_date.as_str()])
-            };
-            if !missing.is_empty() {
-                counts.with_missing += 1;
-            }
             let session_state = if running.as_ref().is_some_and(|r| r.task_id == t.id) {
                 Some("running".to_owned())
             } else if paused.contains(&t.id) {
@@ -264,6 +286,12 @@ pub async fn snapshot(state: &AppState, syncing: bool) -> AppResult<Snapshot> {
             } else {
                 None
             };
+            let skip: Vec<&str> = if session_state.is_some() { auto_filled(&s).to_vec() } else { vec![s.fields.end_date.as_str()] };
+            let missing = if b == Bucket::Done { vec![] } else { missing_fields(t, cache.fields.get(&t.list.id), &s, &skip) };
+            if !missing.is_empty() {
+                counts.with_missing += 1;
+            }
+
             TicketView {
                 id: t.id.clone(),
                 label: t.display_id().to_owned(),
@@ -301,7 +329,7 @@ pub async fn snapshot(state: &AppState, syncing: bool) -> AppResult<Snapshot> {
             let closed = total - open_start.map(|st| now - st).unwrap_or(0);
             let task = cache.tasks.iter().find(|t| t.id == sess.task_id);
             let missing = task
-                .map(|t| missing_fields(t, cache.fields.get(&t.list.id), &s, &[s.fields.end_date.as_str()]))
+                .map(|t| missing_fields(t, cache.fields.get(&t.list.id), &s, &auto_filled(&s)))
                 .unwrap_or_default();
             Some(CurrentView {
                 pause_count: state.db.pause_count(&sess.task_id)?,

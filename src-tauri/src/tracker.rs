@@ -12,7 +12,7 @@ use crate::clickup::{norm, Task};
 use crate::config::Settings;
 use crate::db::{self, NewSession};
 use crate::error::{AppError, AppResult};
-use crate::state::{bucket, missing_fields, now_ms, AppState, Bucket};
+use crate::state::{auto_filled, bucket, fresh_task, missing_fields, now_ms, AppState, Bucket};
 
 /// Escritura pendiente hacia ClickUp. Los campos se referencian por nombre y se
 /// resuelven a su id al ejecutar (con las definiciones de la lista del ticket).
@@ -237,24 +237,20 @@ fn resume_in_tx(c: &Connection, task: &Task, session_id: i64, now: i64, s: &Sett
     Ok(())
 }
 
-/// Finaliza el ticket. Si `force` es falso y faltan campos obligatorios, devuelve
-/// un error con la lista para que el usuario decida (completar o forzar).
-pub async fn stop(state: &AppState, task_id: &str, force: bool) -> AppResult<()> {
+/// Finaliza el ticket. Es obligatorio que estén llenos los campos obligatorios que
+/// le aplican al usuario: si falta alguno, devuelve el error con la lista y no finaliza.
+pub async fn stop(state: &AppState, task_id: &str) -> AppResult<()> {
     let s = state.settings();
-    let task = load_task(state, task_id).await?;
+    let task = fresh_task(state, task_id).await?;
     let sess = state
         .db
         .open_session_for_task(task_id)?
         .ok_or_else(|| AppError::invalid("El ticket no tiene un cronómetro activo."))?;
 
-    if s.check_required_on_stop && !force {
-        let defs = state.list_fields(&task.list.id).await.ok();
-        // Fecha Fin y Fecha de Inicio las llena TicketPilot.
-        let skip = [s.fields.end_date.as_str(), s.fields.start_date.as_str(), s.fields.reopened_date.as_str()];
-        let missing = missing_fields(&task, defs.as_ref(), &s, &skip);
-        if !missing.is_empty() {
-            return Err(AppError::MissingFields(missing));
-        }
+    let defs = state.list_fields(&task.list.id).await.ok();
+    let missing = missing_fields(&task, defs.as_ref(), &s, &auto_filled(&s));
+    if !missing.is_empty() {
+        return Err(AppError::MissingFields(missing));
     }
 
     let now = now_ms();

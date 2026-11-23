@@ -45,8 +45,8 @@ pub async fn pause(app: AppHandle, state: State<'_, AppState>, reason: String) -
 }
 
 #[tauri::command]
-pub async fn stop(app: AppHandle, state: State<'_, AppState>, task_id: String, force: bool) -> AppResult<Snapshot> {
-    tracker::stop(&state, &task_id, force).await?;
+pub async fn stop(app: AppHandle, state: State<'_, AppState>, task_id: String) -> AppResult<Snapshot> {
+    tracker::stop(&state, &task_id).await?;
     after_action(&app, &state).await
 }
 

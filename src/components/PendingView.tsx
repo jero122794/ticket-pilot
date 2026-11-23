@@ -5,7 +5,7 @@ import type { Snapshot } from "../lib/api";
 import { Button, IconButton } from "../ui";
 
 /** Tickets abiertos con campos obligatorios sin llenar. */
-export default function PendingView({ snap, onFill }: { snap: Snapshot; onFill: (taskId: string) => void }) {
+export default function PendingView({ snap, onFill }: { snap: Snapshot; onFill: (taskId: string, finish?: boolean) => void }) {
   const rows = snap.tickets.filter((t) => t.missingFields.length > 0);
   const total = rows.reduce((n, t) => n + t.missingFields.length, 0);
 

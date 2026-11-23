@@ -8,7 +8,7 @@ import type { Snapshot, Ticket } from "../lib/api";
 import { bucketLabel, clock, duration } from "../lib/format";
 import { Button, Clock, IconButton, Input, Textarea, Tip } from "../ui";
 
-type Mode = "main" | "pick" | "pauseReason" | "confirmStop" | "missing";
+type Mode = "main" | "pick" | "pauseReason" | "confirmStop";
 
 /** Alto de la ventana para cada modo (la ventana no tiene bordes y se ajusta al contenido). */
 const HEIGHT: Record<Mode, number> = {
@@ -16,7 +16,6 @@ const HEIGHT: Record<Mode, number> = {
   pick: 400,
   pauseReason: 240,
   confirmStop: 178,
-  missing: 280,
 };
 
 export default function Widget() {
@@ -24,7 +23,6 @@ export default function Widget() {
   const [mode, setMode] = useState<Mode>("main");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [missing, setMissing] = useState<string[]>([]);
   const [askReason, setAskReason] = useState(true);
 
   const cur = snap?.current ?? null;
@@ -46,9 +44,10 @@ export default function Widget() {
       setMode("main");
     } catch (e) {
       const err = asAppError(e);
-      if (err.code === "missing_fields") {
-        setMissing(err.fields);
-        setMode("missing");
+      if (err.code === "missing_fields" && snap?.current) {
+        // No se finaliza con campos vacíos: el formulario se abre en el panel.
+        api.showMain(`finish:${snap.current.taskId}`);
+        setMode("main");
       } else setError(err.message);
     } finally {
       setBusy(false);
@@ -140,31 +139,6 @@ export default function Widget() {
               </Button>
               <Button variant="destructive" size="sm" loading={busy} onClick={() => run(() => api.stop(cur.taskId))}>
                 Finalizar ticket
-              </Button>
-            </div>
-          </>
-        ) : mode === "missing" && cur ? (
-          <>
-            <p>Faltan {missing.length} campos obligatorios:</p>
-            <p className="muted" style={{ flex: 1, overflow: "auto", fontSize: 13 }}>
-              {missing.join(" · ")}
-            </p>
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <Button variant="ghost" size="sm" onClick={() => setMode("main")}>
-                Cancelar
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  api.showMain(`fill:${cur.taskId}`);
-                  setMode("main");
-                }}
-              >
-                Completar
-              </Button>
-              <Button variant="destructive" size="sm" loading={busy} onClick={() => run(() => api.stop(cur.taskId, true))}>
-                Finalizar igual
               </Button>
             </div>
           </>

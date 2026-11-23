@@ -119,8 +119,6 @@ pub struct Settings {
     pub reminder_popup: bool,
     pub open_in_browser_on_play: bool,
     pub ask_pause_reason: bool,
-    /// Bloquear Stop si faltan campos obligatorios (se puede forzar).
-    pub check_required_on_stop: bool,
     /// Campos obligatorios que el desarrollador no llena (los llena otra área).
     pub ignored_fields: Vec<String>,
     pub email: EmailSettings,
@@ -143,7 +141,6 @@ impl Default for Settings {
             reminder_popup: false,
             open_in_browser_on_play: false,
             ask_pause_reason: true,
-            check_required_on_stop: true,
             // Los llenan soporte / analítica al crear el ticket, no el desarrollador.
             ignored_fields: vec![
                 "Fecha y hora reporte".into(),

@@ -126,7 +126,6 @@ export interface Settings {
   reminderPopup: boolean;
   openInBrowserOnPlay: boolean;
   askPauseReason: boolean;
-  checkRequiredOnStop: boolean;
   ignoredFields: string[];
   email: EmailSettings;
 }
@@ -190,7 +189,8 @@ export const api = {
   refresh: () => invoke<Snapshot>("refresh_now"),
   play: (taskId: string) => invoke<Snapshot>("play", { taskId }),
   pause: (reason: string) => invoke<Snapshot>("pause", { reason }),
-  stop: (taskId: string, force = false) => invoke<Snapshot>("stop", { taskId, force }),
+  /** Falla con code "missing_fields" si faltan campos obligatorios: no se puede forzar. */
+  stop: (taskId: string) => invoke<Snapshot>("stop", { taskId }),
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   setToken: (token: string) => invoke<User>("set_clickup_token", { token }),

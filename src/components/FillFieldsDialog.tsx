@@ -9,6 +9,8 @@ type Value = string | boolean | string[];
 
 interface Props {
   taskId: string | null;
+  /** Abierto al finalizar: hay que llenar todo y, al guardar, el ticket se finaliza. */
+  finish?: boolean;
   onClose: () => void;
   notify: (msg: string) => void;
 }
@@ -20,21 +22,23 @@ function toLocalInput(ms: number): string {
 
 const isEmpty = (v: Value | undefined) => v === undefined || v === "" || (Array.isArray(v) && v.length === 0);
 
-export default function FillFieldsDialog({ taskId, onClose, notify }: Props) {
+export default function FillFieldsDialog({ taskId, finish = false, onClose, notify }: Props) {
   const [form, setForm] = useState<FillForm | null>(null);
   const [values, setValues] = useState<Record<string, Value>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const load = (id: string) =>
+    api
+      .fillForm(id)
+      .then(setForm)
+      .catch((e) => setError(asAppError(e).message));
+
   useEffect(() => {
     setForm(null);
     setValues({});
     setError(null);
-    if (!taskId) return;
-    api
-      .fillForm(taskId)
-      .then(setForm)
-      .catch((e) => setError(asAppError(e).message));
+    if (taskId) load(taskId);
   }, [taskId]);
 
   const set = (id: string, v: Value) => setValues((prev) => ({ ...prev, [id]: v }));
@@ -61,18 +65,34 @@ export default function FillFieldsDialog({ taskId, onClose, notify }: Props) {
         return { fieldId: f.id, name: f.name, kind: f.kind, value };
       });
     setSaving(true);
+    setError(null);
     try {
-      await api.saveFields(form.taskId, inputs);
-      notify(`${inputs.length} ${inputs.length === 1 ? "campo guardado" : "campos guardados"} en ${form.label}.`);
+      if (inputs.length) await api.saveFields(form.taskId, inputs);
+      if (finish) {
+        await api.stop(form.taskId);
+        notify(`${form.label} finalizado.`);
+      } else {
+        notify(`${inputs.length} ${inputs.length === 1 ? "campo guardado" : "campos guardados"} en ${form.label}.`);
+      }
       onClose();
     } catch (e) {
-      setError(asAppError(e).message);
+      const err = asAppError(e);
+      if (err.code === "missing_fields") {
+        // Aún falta algo (p. ej. un campo que solo se llena en ClickUp): se recarga el formulario.
+        setValues({});
+        setError(`Todavía faltan: ${err.fields.join(", ")}.`);
+        await load(form.taskId);
+      } else setError(err.message);
     } finally {
       setSaving(false);
     }
   }
 
   const filled = form ? form.fields.filter((f) => f.supported && !isEmpty(values[f.id])).length : 0;
+  const unsupported = form ? form.fields.filter((f) => !f.supported) : [];
+  const total = form ? form.fields.length : 0;
+  // Al finalizar, todo es obligatorio: los editables llenos y ninguno pendiente en ClickUp.
+  const ready = finish ? !!form && filled === total - unsupported.length && unsupported.length === 0 : filled > 0;
 
   function control(f: EditableField) {
     const id = `f-${f.id}`;
@@ -152,8 +172,14 @@ export default function FillFieldsDialog({ taskId, onClose, notify }: Props) {
       wide
       open={!!taskId}
       onOpenChange={(o) => !o && onClose()}
-      title="Completar campos"
-      description={form ? `${form.label} · ${form.name}` : "Cargando el ticket desde ClickUp…"}
+      title={finish ? "completa para finalizar" : "completar campos"}
+      description={
+        !form
+          ? "Cargando el ticket desde ClickUp…"
+          : finish
+            ? `${form.label} ${form.name}. Llena los campos obligatorios para poder finalizarlo.`
+            : `${form.label} ${form.name}`
+      }
       footer={
         <>
           {form && (
@@ -161,11 +187,20 @@ export default function FillFieldsDialog({ taskId, onClose, notify }: Props) {
               <ArrowUpRight /> Abrir en ClickUp
             </Button>
           )}
+          {finish && unsupported.length > 0 && (
+            <Button onClick={() => form && (setError(null), load(form.taskId))}>ya los llené, revisar</Button>
+          )}
           <Button variant="outline" onClick={onClose}>
-            Cancelar
+            {finish ? "seguir trabajando" : "cancelar"}
           </Button>
-          <Button variant="primary" loading={saving} disabled={!filled} onClick={save}>
-            {filled ? `Guardar ${filled} ${filled === 1 ? "campo" : "campos"}` : "Guardar"}
+          <Button variant="primary" loading={saving} disabled={!ready} onClick={save}>
+            {finish
+              ? total === 0
+                ? "finalizar"
+                : `guardar y finalizar (${filled}/${total})`
+              : filled
+                ? `guardar ${filled} ${filled === 1 ? "campo" : "campos"}`
+                : "guardar"}
           </Button>
         </>
       }
@@ -181,7 +216,17 @@ export default function FillFieldsDialog({ taskId, onClose, notify }: Props) {
             <Spinner />
           </div>
         )}
-        {form && form.fields.length === 0 && <p className="muted">Este ticket no tiene campos pendientes que te apliquen.</p>}
+        {form && form.fields.length === 0 && (
+          <p className="muted">
+            {finish ? "Todos los campos obligatorios están llenos. Ya puedes finalizar." : "Este ticket no tiene campos pendientes que te apliquen."}
+          </p>
+        )}
+        {finish && unsupported.length > 0 && (
+          <p className="hint">
+            {unsupported.map((f) => f.name).join(", ")} solo se {unsupported.length === 1 ? "llena" : "llenan"} en ClickUp. Ábrelo,
+            complétalo y pulsa «ya los llené, revisar».
+          </p>
+        )}
         {form?.fields.map((f) => (
           <div key={f.id} className="row" style={{ alignItems: "flex-start", gap: 12 }}>
             <div style={{ flex: 1, minWidth: 0 }}>

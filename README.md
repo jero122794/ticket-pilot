@@ -93,7 +93,10 @@ Pulsa **pausar**. La app te pide el motivo (por ejemplo «me reasignaron un tick
 
 Pulsa **finalizar** y confirma.
 
-- Si faltan campos obligatorios, la app te los muestra antes de cerrar. Puedes **completar campos** ahí mismo o **finalizar igual**.
+- **No se puede finalizar con campos obligatorios vacíos.** Si falta alguno, se abre el formulario **completa para finalizar** con los campos pendientes. El botón **guardar y finalizar** se activa cuando todos están llenos: guarda los valores y finaliza el ticket en un solo paso.
+- Si un campo solo se puede llenar en ClickUp, el formulario lo indica. Llénalo allá y pulsa **ya los llené, revisar**.
+- Los campos que llena otra área no te bloquean: márcalos **no me aplica** (ver [Campos pendientes](#campos-pendientes)).
+- TicketPilot no te pide las fechas que pone él mismo (inicio, fin y reabierto).
 - Al finalizar, el ticket pasa al estado configurado («listo para release» por defecto) y se deja un comentario con el tiempo total.
 
 ### El panel
@@ -202,7 +205,7 @@ El correo trae el tiempo trabajado hoy por ticket, los contadores y los campos p
 | Sección | Qué puedes cambiar |
 |---|---|
 | Cuenta de ClickUp | Conectar o desconectar el token. Elegir el workspace, si tienes varios. Abrir la app al iniciar sesión. |
-| Play, Pausa y Stop | El estado al iniciar y al finalizar. Pedir motivo al pausar. Revisar campos antes de finalizar. Abrir el ticket en el navegador al dar Play. |
+| Play, Pausa y Stop | El estado al iniciar y al finalizar. Pedir motivo al pausar. Abrir el ticket en el navegador al dar Play. |
 | Campos que lleno yo | Qué campos obligatorios te aplican a ti. |
 | Recordatorios | Cada cuántos minutos (0 = apagados), horario laboral y cada cuánto recargar los tickets. |
 | Resumen por correo | Servidor, cuenta, destinatarios y hora. |

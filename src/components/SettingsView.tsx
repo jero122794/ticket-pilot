@@ -189,13 +189,6 @@ export default function SettingsView({ snap, notify }: Props) {
         </div>
         <SwitchRow id="ask-reason" label="Pedir motivo al pausar" checked={s.askPauseReason} onChange={(v) => set("askPauseReason", v)} />
         <SwitchRow
-          id="check-stop"
-          label="Revisar campos antes de finalizar"
-          description="Avisa si faltan obligatorios; siempre puedes finalizar igual."
-          checked={s.checkRequiredOnStop}
-          onChange={(v) => set("checkRequiredOnStop", v)}
-        />
-        <SwitchRow
           id="open-play"
           label="Abrir el ticket en el navegador al dar Play"
           checked={s.openInBrowserOnPlay}

@@ -10,7 +10,7 @@ import type { Act } from "../windows/MainWindow";
 interface Props {
   snap: Snapshot;
   act: Act;
-  onFill: (taskId: string) => void;
+  onFill: (taskId: string, finish?: boolean) => void;
 }
 
 type Filter = Bucket | "open";
@@ -122,7 +122,7 @@ function NowPanel({
   act: Act;
   onPause: () => void;
   onStop: (t: StopTarget) => void;
-  onFill: (id: string) => void;
+  onFill: (id: string, finish?: boolean) => void;
 }) {
   const cur = snap.current;
   const now = useNow(cur?.state === "running");
@@ -244,7 +244,7 @@ function Row({
   act: Act;
   onPause: () => void;
   onStop: (t: StopTarget) => void;
-  onFill: (id: string) => void;
+  onFill: (id: string, finish?: boolean) => void;
 }) {
   return (
     <div className="ticket" role="row" data-active={t.sessionState === "running"}>
@@ -427,30 +427,23 @@ function StopDialog({
   target: StopTarget | null;
   onClose: () => void;
   act: Act;
-  onFill: (id: string) => void;
+  onFill: (id: string, finish?: boolean) => void;
 }) {
-  const [missing, setMissing] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const close = () => {
-    setMissing(null);
-    onClose();
-  };
-
-  async function stop(force: boolean) {
+  async function stop() {
     if (!target) return;
     setBusy(true);
     try {
-      await api.stop(target.id, force);
+      await api.stop(target.id);
       await act(api.snapshot);
-      close();
+      onClose();
     } catch (e) {
       const err = asAppError(e);
-      if (err.code === "missing_fields") setMissing(err.fields);
-      else {
-        close();
-        await act(() => Promise.reject(err));
-      }
+      onClose();
+      // Faltan campos: no se puede finalizar sin llenarlos; se abre el formulario.
+      if (err.code === "missing_fields") onFill(target.id, true);
+      else await act(() => Promise.reject(err));
     } finally {
       setBusy(false);
     }
@@ -459,44 +452,19 @@ function StopDialog({
   return (
     <Dialog
       open={!!target}
-      onOpenChange={(v) => !v && close()}
-      title={missing ? "faltan campos" : `finalizar ${target?.label ?? ""}`}
-      description={
-        missing
-          ? "ClickUp marca estos campos como obligatorios. Complétalos o finaliza igual."
-          : "Se detiene el cronómetro, se registra la fecha de fin y el ticket pasa al estado de finalizado en ClickUp."
-      }
+      onOpenChange={(v) => !v && onClose()}
+      title={`finalizar ${target?.label ?? ""}`}
+      description="Se detiene el cronómetro, se registra la fecha de fin y el ticket pasa al estado de finalizado en ClickUp. Si faltan campos obligatorios, primero tendrás que llenarlos."
       footer={
         <>
-          <Button variant="ghost" onClick={close}>
+          <Button variant="ghost" onClick={onClose}>
             seguir trabajando
           </Button>
-          {missing && target && (
-            <Button
-              onClick={() => {
-                onFill(target.id);
-                close();
-              }}
-            >
-              completar campos
-            </Button>
-          )}
-          <Button variant="destructive" loading={busy} onClick={() => stop(!!missing)}>
-            {missing ? "finalizar igual" : "finalizar"}
+          <Button variant="destructive" loading={busy} onClick={stop}>
+            finalizar
           </Button>
         </>
       }
-    >
-      {missing && (
-        <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
-          {missing.map((f) => (
-            <li key={f}>
-              <span className="muted">- </span>
-              {f}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Dialog>
+    />
   );
 }

@@ -30,7 +30,9 @@ function shortUser(name?: string): string {
 export default function MainWindow() {
   const [snap, setSnap] = useSnapshot();
   const [view, setView] = useState<View>("tickets");
-  const [fillTask, setFillTask] = useState<string | null>(null);
+  /** Formulario de campos abierto; `finish` = completar para poder finalizar. */
+  const [fill, setFill] = useState<{ id: string; finish: boolean } | null>(null);
+  const openFill = (id: string, finish = false) => setFill({ id, finish });
   const { notify, view: toast } = useToast();
 
   // Rust pide cambiar de vista (bandeja, widget, recordatorios). "fill:<id>" abre el formulario.
@@ -38,7 +40,10 @@ export default function MainWindow() {
     const un = listen<string>("navigate", (e) => {
       if (e.payload.startsWith("fill:")) {
         setView("pending");
-        setFillTask(e.payload.slice(5));
+        setFill({ id: e.payload.slice(5), finish: false });
+      } else if (e.payload.startsWith("finish:")) {
+        setView("tickets");
+        setFill({ id: e.payload.slice(7), finish: true });
       } else setView(e.payload as View);
     });
     return () => {
@@ -136,14 +141,14 @@ export default function MainWindow() {
               </Button>
             </div>
           )}
-          {view === "tickets" && <TicketsView snap={snap} act={act} onFill={setFillTask} />}
-          {view === "pending" && <PendingView snap={snap} onFill={setFillTask} />}
+          {view === "tickets" && <TicketsView snap={snap} act={act} onFill={openFill} />}
+          {view === "pending" && <PendingView snap={snap} onFill={openFill} />}
           {view === "sync" && <SyncView snap={snap} act={act} />}
           {view === "settings" && <SettingsView snap={snap} notify={notify} />}
         </div>
       </main>
 
-      <FillFieldsDialog taskId={fillTask} onClose={() => setFillTask(null)} notify={notify} />
+      <FillFieldsDialog taskId={fill?.id ?? null} finish={!!fill?.finish} onClose={() => setFill(null)} notify={notify} />
       {toast}
     </div>
   );
