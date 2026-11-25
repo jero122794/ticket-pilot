@@ -147,6 +147,24 @@ impl Task {
             .find_map(|f| f.value.as_ref()?.as_str().map(str::to_owned))
     }
 
+    /// Valor numérico de un campo (los números llegan como texto o como número).
+    pub fn field_number(&self, name: &str) -> Option<f64> {
+        let wanted = norm(name);
+        self.custom_fields
+            .iter()
+            .filter(|f| norm(&f.name) == wanted)
+            .find_map(|f| match f.value.as_ref()? {
+                serde_json::Value::Number(n) => n.as_f64(),
+                serde_json::Value::String(s) => s.trim().replace(',', ".").parse().ok(),
+                _ => None,
+            })
+    }
+
+    /// Horas estimadas convertidas a milisegundos.
+    pub fn estimate_ms(&self, field: &str) -> Option<i64> {
+        self.field_number(field).filter(|h| *h > 0.0).map(|h| (h * 3_600_000.0).round() as i64)
+    }
+
     pub fn display_id(&self) -> &str {
         self.custom_id.as_deref().unwrap_or(&self.id)
     }

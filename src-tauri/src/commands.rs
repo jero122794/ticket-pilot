@@ -132,8 +132,9 @@ pub async fn discard_failed(app: AppHandle, state: State<'_, AppState>, id: i64)
 
 #[tauri::command]
 pub fn open_url(app: AppHandle, url: String) -> AppResult<()> {
-    if !url.starts_with("https://app.clickup.com/") {
-        return Err(AppError::invalid("Solo se abren enlaces de ClickUp."));
+    // ClickUp, adjuntos y repositorios: solo enlaces web seguros.
+    if !url.starts_with("https://") {
+        return Err(AppError::invalid("Solo se abren enlaces https."));
     }
     app.opener()
         .open_url(url, None::<&str>)

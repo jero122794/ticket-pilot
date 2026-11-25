@@ -239,6 +239,9 @@ pub async fn list_required_fields(state: State<'_, AppState>) -> AppResult<Vec<R
             .filter(|f| f.required.unwrap_or(false) && !matches!(f.kind.as_str(), "formula" | "multi_key"))
             .for_each(|f| add(&f.name));
     }
+    for e in &s.extra_required {
+        add(e);
+    }
     // Los ignorados que ya no existen se muestran igual, para poder reactivarlos.
     for i in &s.ignored_fields {
         add(i);

@@ -33,6 +33,7 @@ pub fn spawn(app: AppHandle) {
             let configured = secrets::get(secrets::CLICKUP_TOKEN).ok().flatten().is_some();
 
             shift_end(&app, &state).await;
+            show_notices(&app, &state).await;
             let flushed = if configured { flush_outbox(&state).await } else { 0 };
             let dirty = state.dirty.swap(false, Ordering::SeqCst);
             let poll_due = now - last_poll >= (s.poll_minutes.max(1) as i64) * 60_000;
@@ -55,6 +56,10 @@ pub fn spawn(app: AppHandle) {
                     remind(&app, &state).await;
                 }
                 shift_start(&app, &state).await;
+                purge_daily(&state);
+                if configured {
+                    due_alerts(&state).await;
+                }
                 if let Err(e) = mail::tick(&state).await {
                     log::warn!("correo diario: {e}");
                     state.cache.lock().await.last_error = Some(e.to_string());
@@ -108,6 +113,7 @@ pub async fn refresh(state: &AppState) -> AppResult<()> {
             list_ids: &s.list_ids,
             include_closed: false,
             date_done_gt: None,
+            date_updated_gt: None,
         })
         .await?;
     let recent_done = client
@@ -117,6 +123,7 @@ pub async fn refresh(state: &AppState) -> AppResult<()> {
             list_ids: &s.list_ids,
             include_closed: true,
             date_done_gt: Some(now_ms() - RECENT_DONE_DAYS * 86_400_000),
+            date_updated_gt: None,
         })
         .await
         .unwrap_or_default();
@@ -180,6 +187,9 @@ pub async fn refresh(state: &AppState) -> AppResult<()> {
             Err(e) => log::warn!("campos de la lista {list_id}: {e}"),
         }
     }
+
+    let me = user.id;
+    detect_changes(state, &client, &s, me, &tasks).await;
 
     let mut cache = state.cache.lock().await;
     cache.user = Some(user);
@@ -398,6 +408,133 @@ async fn execute(state: &AppState, client: &ClickUp, task_id: &str, job: Job) ->
 // ---------------------------------------------------------------------------
 // Recordatorios de campos sin llenar
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Avisos de cambios hechos por otras personas
+// ---------------------------------------------------------------------------
+
+/// Máximo de tickets cuyos comentarios se revisan en cada recarga.
+const COMMENT_CHECKS_PER_REFRESH: usize = 8;
+
+/// Compara la recarga con la anterior: tickets nuevos, cambios de estado y
+/// comentarios nuevos de otras personas. La primera carga no avisa nada.
+async fn detect_changes(state: &AppState, client: &ClickUp, s: &crate::config::Settings, me: u64, tasks: &[crate::clickup::Task]) {
+    let prev: Vec<(String, String, i64)> = {
+        let c = state.cache.lock().await;
+        if c.tasks.is_empty() {
+            return;
+        }
+        c.tasks.iter().map(|t| (t.id.clone(), t.status.status.clone(), t.date_updated.unwrap_or(0))).collect()
+    };
+    let mut notices = Vec::new();
+    let mut to_check = Vec::new();
+    for t in tasks {
+        let before = prev.iter().find(|(id, ..)| *id == t.id);
+        match before {
+            None if s.notify.assigned && bucket(t, s) != Bucket::Done => {
+                notices.push(("Te asignaron un ticket".to_owned(), format!("{}: {}", t.display_id(), t.name)));
+            }
+            Some((_, old, updated)) => {
+                // Los estados que pone la propia app (Play / Finalizar) no se avisan.
+                let own = [norm(&s.statuses.in_progress), norm(&s.statuses.done)];
+                if s.notify.status && norm(old) != norm(&t.status.status) && !own.contains(&norm(&t.status.status)) {
+                    let title = if bucket(t, s) == Bucket::Reopened { "Reabrieron un ticket" } else { "Cambió el estado de un ticket" };
+                    notices.push((title.to_owned(), format!("{}: {} → {}", t.display_id(), old, t.status.status)));
+                }
+                if s.notify.comments && t.date_updated.unwrap_or(0) > *updated && bucket(t, s) != Bucket::Done {
+                    to_check.push((t.id.clone(), t.display_id().to_owned(), *updated));
+                }
+            }
+            None => {}
+        }
+    }
+
+    for (id, label, since) in to_check.into_iter().take(COMMENT_CHECKS_PER_REFRESH) {
+        let Ok(v) = client.raw(reqwest::Method::GET, &format!("/task/{id}/comment"), &[], None).await else { continue };
+        let seen = state.cache.lock().await.comments_seen.get(&id).copied().unwrap_or(since);
+        let comments = crate::detail::parse_comments(&v, Some(me));
+        let fresh: Vec<_> = comments.iter().filter(|c| c.at > seen && !c.mine).collect();
+        if let Some(last) = comments.iter().map(|c| c.at).max() {
+            state.cache.lock().await.comments_seen.insert(id.clone(), last.max(seen));
+        }
+        for c in fresh.iter().rev().take(2) {
+            let text: String = c.text.chars().take(140).collect();
+            notices.push((format!("{} comentó en {label}", c.user), text));
+        }
+    }
+    if !notices.is_empty() {
+        state.cache.lock().await.notices.extend(notices);
+    }
+}
+
+/// Vencimientos de «Fecha límite SLA» y «Fecha estimada entrega» de los tickets abiertos.
+async fn due_alerts(state: &AppState) {
+    let s = state.settings();
+    if !s.notify.due {
+        return;
+    }
+    let now = now_ms();
+    let warn = s.notify.due_hours.max(1) as i64 * 3_600_000;
+    let mut cache = state.cache.lock().await;
+    let mut out = Vec::new();
+    for t in cache.tasks.iter().filter(|t| bucket(t, &s) != Bucket::Done) {
+        for (field, what) in [(&s.fields.sla_due, "el SLA"), (&s.fields.delivery_due, "la entrega estimada")] {
+            let Some(due) = t.field_text(field).and_then(|v| v.parse::<i64>().ok()) else { continue };
+            let stage = if due <= now {
+                "vencido"
+            } else if due - now <= warn {
+                "pronto"
+            } else {
+                continue;
+            };
+            let key = format!("{}|{field}|{stage}", t.id);
+            if cache.due_notified.contains(&key) {
+                continue;
+            }
+            let when = crate::tracker::fmt_local(due);
+            let body = if stage == "vencido" {
+                format!("{}: venció {what} ({when}).", t.display_id())
+            } else {
+                format!("{}: {what} vence el {when}.", t.display_id())
+            };
+            out.push((key, (if stage == "vencido" { "Ticket vencido" } else { "Ticket por vencer" }).to_owned(), body));
+        }
+    }
+    for (key, title, body) in out {
+        cache.due_notified.insert(key);
+        cache.notices.push((title, body));
+    }
+}
+
+async fn show_notices(app: &AppHandle, state: &AppState) {
+    let notices = std::mem::take(&mut state.cache.lock().await.notices);
+    for (title, body) in notices.into_iter().take(5) {
+        if let Err(e) = app.notification().builder().title(&title).body(&body).show() {
+            log::warn!("notificación: {e}");
+        }
+    }
+}
+
+/// Una vez al día limpia la base local: lo finalizado antes de hoy ya está en ClickUp.
+/// No se borra nada mientras haya cambios en cola sin enviar.
+fn purge_daily(state: &AppState) {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    if state.db.kv_get("last_purge").ok().flatten().as_deref() == Some(today.as_str()) {
+        return;
+    }
+    if state.db.outbox_pending().unwrap_or(1) > 0 {
+        return;
+    }
+    match state.db.purge_finished(crate::state::local_day_start(now_ms())) {
+        Ok(n) => {
+            let _ = state.db.kv_set("last_purge", &today);
+            if n > 0 {
+                log::info!("base local: {n} sesiones finalizadas borradas (ya están en ClickUp)");
+            }
+        }
+        Err(e) => log::warn!("limpieza de la base local: {e}"),
+    }
+}
 
 /// Pausa por fin de turno (solo local) y avisa con una notificación.
 async fn shift_end(app: &AppHandle, state: &AppState) {

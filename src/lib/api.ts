@@ -28,6 +28,8 @@ export interface Ticket {
   bucket: Bucket;
   missingFields: string[];
   workedMs: number;
+  /** Horas estimadas en ClickUp, en ms. */
+  estimateMs?: number | null;
   sessionState?: SessionState | null;
   /** Agregado a mano por enlace (compartido, no llega en la búsqueda de asignadas). */
   manual: boolean;
@@ -54,6 +56,7 @@ export interface Current {
   url: string;
   state: SessionState;
   workedMs: number;
+  estimateMs?: number | null;
   runningSince?: number | null;
   pauseCount: number;
   missingFields: string[];
@@ -97,6 +100,10 @@ export interface FieldNames {
   pauseStateClosed: string;
   reopenedDate: string;
   reopenedReason: string;
+  estimate: string;
+  slaDue: string;
+  deliveryDue: string;
+  evidence: string;
 }
 
 export interface StatusNames {
@@ -124,6 +131,149 @@ export interface WorkDay {
   end: string;
 }
 
+export interface StatusOption {
+  status: string;
+  color?: string | null;
+  kind: string;
+}
+
+export interface NamedValue {
+  name: string;
+  value: string;
+}
+
+export interface Attachment {
+  id: string;
+  title: string;
+  url: string;
+  thumbnail?: string | null;
+  extension: string;
+  size?: number | null;
+  at?: number | null;
+}
+
+export interface ChecklistItem {
+  id: string;
+  name: string;
+  resolved: boolean;
+}
+
+export interface Checklist {
+  id: string;
+  name: string;
+  items: ChecklistItem[];
+}
+
+export interface SubtaskRef {
+  id: string;
+  label: string;
+  name: string;
+  status: string;
+  statusColor?: string | null;
+  done: boolean;
+}
+
+export interface TaskDetail {
+  id: string;
+  label: string;
+  name: string;
+  url: string;
+  status: string;
+  statusColor?: string | null;
+  statuses: StatusOption[];
+  description: string;
+  texts: NamedValue[];
+  values: NamedValue[];
+  dates: { name: string; ms: number }[];
+  slaDue?: number | null;
+  deliveryDue?: number | null;
+  assignees: string[];
+  attachments: Attachment[];
+  checklists: Checklist[];
+  subtasks: SubtaskRef[];
+  parentId?: string | null;
+  timeSpentMs: number;
+  estimateMs?: number | null;
+  missingFields: string[];
+  sessionState?: SessionState | null;
+  /** Campo de evidencias («Observaciones»), aunque esté vacío. */
+  evidence?: { id: string; name: string; value: string } | null;
+}
+
+export interface Comment {
+  id: string;
+  text: string;
+  user: string;
+  userId?: number | null;
+  mine: boolean;
+  at: number;
+  replies: number;
+}
+
+export interface Member {
+  id: number;
+  name: string;
+}
+
+export interface CommentPart {
+  text?: string;
+  userId?: number;
+}
+
+export interface TimeEntry {
+  id: string;
+  start: number;
+  end: number;
+  duration: number;
+  description: string;
+  running: boolean;
+}
+
+export interface GitHint {
+  repo: string;
+  branch: string;
+  branchUrl?: string | null;
+  mrUrl?: string | null;
+  matches: boolean;
+}
+
+export interface NotifySettings {
+  assigned: boolean;
+  status: boolean;
+  comments: boolean;
+  due: boolean;
+  dueHours: number;
+}
+
+export type Period = "day" | "week" | "month";
+
+export interface ReportTicket {
+  taskId: string;
+  label: string;
+  name: string;
+  url: string;
+  workedMs: number;
+  estimateMs?: number | null;
+  finishedAt?: number | null;
+}
+
+export interface ReportDay {
+  at: number;
+  workedMs: number;
+  tickets: number;
+}
+
+export interface Report {
+  period: Period;
+  from: number;
+  to: number;
+  workedMs: number;
+  workedTickets: number;
+  finishedTickets: number;
+  days: ReportDay[];
+  tickets: ReportTicket[];
+}
+
 export interface Settings {
   teamId?: string | null;
   listIds: string[];
@@ -138,6 +288,11 @@ export interface Settings {
   openInBrowserOnPlay: boolean;
   askPauseReason: boolean;
   ignoredFields: string[];
+  /** Campos que se piden aunque ClickUp no los marque obligatorios. */
+  extraRequired: string[];
+  notify: NotifySettings;
+  /** Carpetas de repositorios locales para sugerir rama y merge request. */
+  repoPaths: string[];
   email: EmailSettings;
 }
 
@@ -197,6 +352,7 @@ export function asAppError(e: unknown): AppError {
 
 export const api = {
   snapshot: () => invoke<Snapshot>("get_snapshot"),
+  report: (period: Period, offset: number) => invoke<Report>("get_report", { period, offset }),
   refresh: () => invoke<Snapshot>("refresh_now"),
   play: (taskId: string) => invoke<Snapshot>("play", { taskId }),
   pause: (reason: string) => invoke<Snapshot>("pause", { reason }),
@@ -224,6 +380,21 @@ export const api = {
   setFieldApplies: (name: string, applies: boolean) => invoke<void>("set_field_applies", { name, applies }),
   addTaskByRef: (reference: string) => invoke<string>("add_task_by_ref", { reference }),
   removeManualTask: (taskId: string) => invoke<void>("remove_manual_task", { taskId }),
+  taskDetail: (taskId: string) => invoke<TaskDetail>("get_task_detail", { taskId }),
+  comments: (taskId: string) => invoke<Comment[]>("get_comments", { taskId }),
+  taskMembers: (taskId: string) => invoke<Member[]>("get_task_members", { taskId }),
+  addComment: (taskId: string, parts: CommentPart[]) => invoke<void>("add_comment", { taskId, parts }),
+  setStatus: (taskId: string, status: string, note: string) => invoke<void>("set_task_status", { taskId, status, note }),
+  setChecklistItem: (checklistId: string, itemId: string, resolved: boolean) =>
+    invoke<void>("set_checklist_item", { checklistId, itemId, resolved }),
+  timeEntries: (taskId: string) => invoke<TimeEntry[]>("get_time_entries", { taskId }),
+  addTimeEntry: (taskId: string, start: number, end: number, note: string) => invoke<void>("add_time_entry", { taskId, start, end, note }),
+  updateTimeEntry: (taskId: string, entryId: string, start: number, end: number) =>
+    invoke<void>("update_time_entry", { taskId, entryId, start, end }),
+  deleteTimeEntry: (entryId: string) => invoke<void>("delete_time_entry", { entryId }),
+  uploadEvidence: (taskId: string, filename: string, mime: string, data: string) =>
+    invoke<{ url: string; title: string }>("upload_evidence", { taskId, filename, mime, data }),
+  gitSuggestions: (label: string) => invoke<GitHint[]>("git_suggestions", { label }),
 };
 
 // ---------- hooks ----------

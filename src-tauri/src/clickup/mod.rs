@@ -26,6 +26,7 @@ pub struct TaskQuery<'a> {
     pub list_ids: &'a [String],
     pub include_closed: bool,
     pub date_done_gt: Option<i64>,
+    pub date_updated_gt: Option<i64>,
 }
 
 impl ClickUp {
@@ -80,6 +81,9 @@ impl ClickUp {
             }
             if let Some(ts) = q.date_done_gt {
                 params.push(("date_done_gt".into(), ts.to_string()));
+            }
+            if let Some(ts) = q.date_updated_gt {
+                params.push(("date_updated_gt".into(), ts.to_string()));
             }
             let rb = self
                 .req(Method::GET, &format!("/team/{}/task", q.team_id))
@@ -197,6 +201,49 @@ impl ClickUp {
 
     /// Registra un tramo de trabajo en el time tracking nativo de ClickUp,
     /// así el campo "Tiempo registrado" del ticket refleja las horas reales.
+    /// Petición genérica que devuelve JSON libre (detalle, comentarios, checklists…).
+    /// Una respuesta vacía se devuelve como `null`.
+    pub async fn raw(&self, method: Method, path: &str, query: &[(&str, String)], body: Option<Value>) -> AppResult<Value> {
+        let mut rb = self.req(method, path).query(query);
+        if let Some(b) = body {
+            rb = rb.json(&b);
+        }
+        let res = check(rb.send().await?).await?;
+        let text = res.text().await?;
+        if text.trim().is_empty() {
+            return Ok(Value::Null);
+        }
+        serde_json::from_str(&text).map_err(|e| AppError::invalid(format!("ClickUp respondió en un formato inesperado: {e}")))
+    }
+
+    /// Sube un archivo como adjunto del ticket y devuelve el JSON del adjunto (con `url`).
+    pub async fn upload_attachment(&self, task_id: &str, filename: &str, mime: &str, bytes: Vec<u8>) -> AppResult<Value> {
+        let part = reqwest::multipart::Part::bytes(bytes)
+            .file_name(filename.to_owned())
+            .mime_str(mime)
+            .map_err(|e| AppError::invalid(e.to_string()))?;
+        let form = reqwest::multipart::Form::new().part("attachment", part);
+        let res = self
+            .req(Method::POST, &format!("/task/{task_id}/attachment"))
+            .multipart(form)
+            .timeout(Duration::from_secs(120))
+            .send()
+            .await?;
+        Ok(check(res).await?.json::<Value>().await?)
+    }
+
+    /// Registros de tiempo del usuario autenticado que empiezan en [from, to].
+    /// Se leen como JSON libre (task puede venir vacío y los números como texto).
+    pub async fn time_entries(&self, team_id: &str, from: i64, to: i64) -> AppResult<Vec<Value>> {
+        let v: Value = self
+            .send(
+                self.req(Method::GET, &format!("/team/{team_id}/time_entries"))
+                    .query(&[("start_date", from.to_string()), ("end_date", to.to_string())]),
+            )
+            .await?;
+        Ok(v.get("data").and_then(Value::as_array).cloned().unwrap_or_default())
+    }
+
     pub async fn time_entry(&self, team_id: &str, task_id: &str, start_ms: i64, duration_ms: i64) -> AppResult<()> {
         self.send_unit(
             self.req(Method::POST, &format!("/team/{team_id}/time_entries"))

@@ -4,7 +4,7 @@ import { ChevronDown } from "lucide-react";
 
 import { api, asAppError } from "../lib/api";
 import type { FieldNames, Settings, Snapshot, Team, WorkDay } from "../lib/api";
-import { Button, Checkbox, Field, Input, Select, SwitchRow } from "../ui";
+import { Button, Checkbox, Field, Input, Select, SwitchRow, Textarea } from "../ui";
 
 interface Props {
   snap: Snapshot;
@@ -66,6 +66,7 @@ export default function SettingsView({ snap, notify }: Props) {
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS({ ...s, [k]: v });
   const setEmail = <K extends keyof Settings["email"]>(k: K, v: Settings["email"][K]) => setS({ ...s, email: { ...s.email, [k]: v } });
   const setField = <K extends keyof FieldNames>(k: K, v: FieldNames[K]) => setS({ ...s, fields: { ...s.fields, [k]: v } });
+  const setNotify = <K extends keyof Settings["notify"]>(k: K, v: Settings["notify"][K]) => setS({ ...s, notify: { ...s.notify, [k]: v } });
   const setDay = (i: number, patch: Partial<WorkDay>) =>
     setS({ ...s, schedule: s.schedule.map((d, j) => (j === i ? { ...d, ...patch } : d)) });
   const int = (v: string, min: number) => Math.max(min, Number.parseInt(v, 10) || 0);
@@ -267,6 +268,56 @@ export default function SettingsView({ snap, notify }: Props) {
         />
       </Section>
 
+      <Section title="Avisos" description="Notificaciones del sistema por cambios que hacen otras personas en ClickUp.">
+        <SwitchRow id="n-assigned" label="Ticket nuevo asignado" checked={s.notify.assigned} onChange={(v) => setNotify("assigned", v)} />
+        <SwitchRow
+          id="n-status"
+          label="Cambio de estado"
+          description="Reabierto, devuelto por QA, en revisión… (no avisa los que pone la app)."
+          checked={s.notify.status}
+          onChange={(v) => setNotify("status", v)}
+        />
+        <SwitchRow
+          id="n-comments"
+          label="Comentarios nuevos"
+          description="De otras personas en tus tickets abiertos."
+          checked={s.notify.comments}
+          onChange={(v) => setNotify("comments", v)}
+        />
+        <SwitchRow
+          id="n-due"
+          label="Vencimientos"
+          description={`«${s.fields.slaDue}» y «${s.fields.deliveryDue}».`}
+          checked={s.notify.due}
+          onChange={(v) => setNotify("due", v)}
+        />
+        <Field label="Avisar con anticipación (horas)" htmlFor="n-hours">
+          <Input
+            id="n-hours"
+            type="number"
+            min={1}
+            style={{ maxWidth: 120 }}
+            disabled={!s.notify.due}
+            value={s.notify.dueHours}
+            onChange={(e) => setNotify("dueHours", int(e.target.value, 1))}
+          />
+        </Field>
+      </Section>
+
+      <Section
+        title="Repositorios"
+        description="Carpetas de tus proyectos con Git. Al llenar los campos de rama y merge request, la app sugiere la rama actual de cada una."
+      >
+        <Field label="Carpetas (una por línea)" htmlFor="repos" hint="Ejemplo: /home/usuario/proyectos/plataforma">
+          <Textarea
+            id="repos"
+            rows={3}
+            value={s.repoPaths.join("\n")}
+            onChange={(e) => set("repoPaths", e.target.value.split("\n"))}
+          />
+        </Field>
+      </Section>
+
       <Section title="Recordatorios" description="Notificación del sistema con los tickets en curso que tienen campos sin llenar.">
         <Field label="Cada (minutos)" htmlFor="rem" hint="0 = desactivados">
           <Input id="rem" type="number" min={0} style={{ maxWidth: 120 }} value={s.reminderMinutes} onChange={(e) => set("reminderMinutes", int(e.target.value, 0))} />
@@ -358,6 +409,10 @@ export default function SettingsView({ snap, notify }: Props) {
                   ["pauseState", "Estado de pausa"],
                   ["reopenedDate", "Fecha de reabierto"],
                   ["reopenedReason", "Motivo de reabierto"],
+                  ["estimate", "Estimación en horas"],
+                  ["slaDue", "Fecha límite SLA"],
+                  ["deliveryDue", "Fecha estimada de entrega"],
+                  ["evidence", "Evidencias de pruebas"],
                 ] as const
               ).map(([k, label]) => (
                 <Field key={k} label={label} htmlFor={`fn-${k}`}>

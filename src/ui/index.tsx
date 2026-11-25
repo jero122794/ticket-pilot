@@ -239,6 +239,7 @@ export function Dialog({
   children,
   footer,
   wide,
+  size,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -247,12 +248,14 @@ export function Dialog({
   children?: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** "xl" = panel ancho de detalle. */
+  size?: "xl";
 }) {
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="overlay" />
-        <RDialog.Content className={cx("dialog", wide && "dialog--wide")} aria-describedby={undefined}>
+        <RDialog.Content className={cx("dialog", wide && "dialog--wide", size === "xl" && "dialog--xl")} aria-describedby={undefined}>
           <div className="dialog__header">
             <RDialog.Title className="dialog__title">{title}</RDialog.Title>
             {description && <RDialog.Description className="dialog__desc">{description}</RDialog.Description>}

@@ -22,6 +22,13 @@ pub struct FieldNames {
     pub pause_state_closed: String,
     pub reopened_date: String,
     pub reopened_reason: String,
+    /// Número de horas estimadas para el ticket.
+    pub estimate: String,
+    /// Fechas de vencimiento que generan aviso.
+    pub sla_due: String,
+    pub delivery_due: String,
+    /// Texto donde van las evidencias de pruebas (pantallazos).
+    pub evidence: String,
 }
 
 impl Default for FieldNames {
@@ -38,6 +45,10 @@ impl Default for FieldNames {
             pause_state_closed: "Cerrada".into(),
             reopened_date: "Fecha de Reabierto".into(),
             reopened_reason: "Motivo de Reabierto".into(),
+            estimate: "Estimación en Horas".into(),
+            sla_due: "Fecha límite SLA".into(),
+            delivery_due: "Fecha estimada entrega".into(),
+            evidence: "Observaciones".into(),
         }
     }
 }
@@ -103,6 +114,32 @@ impl Default for EmailSettings {
     }
 }
 
+/// Campos que el equipo exige aunque ClickUp no los marque obligatorios. Si el
+/// usuario no los llena, los marca «no me aplica» (ignored_fields), no se quitan de aquí.
+pub const DEFAULT_EXTRA_REQUIRED: &[&str] = &["Estimación en Horas", "Observaciones"];
+
+/// Avisos del sistema por cambios hechos por otras personas en ClickUp.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct NotifySettings {
+    /// Ticket nuevo asignado.
+    pub assigned: bool,
+    /// Cambio de estado (reabierto, devuelto por QA, etc.).
+    pub status: bool,
+    /// Comentarios de otras personas en mis tickets abiertos.
+    pub comments: bool,
+    /// Vencimiento de «Fecha límite SLA» y «Fecha estimada entrega».
+    pub due: bool,
+    /// Con cuántas horas de anticipación avisar el vencimiento.
+    pub due_hours: u64,
+}
+
+impl Default for NotifySettings {
+    fn default() -> Self {
+        Self { assigned: true, status: true, comments: true, due: true, due_hours: 24 }
+    }
+}
+
 /// Jornada de un día. `enabled = false` = día libre.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -155,6 +192,12 @@ pub struct Settings {
     pub ask_pause_reason: bool,
     /// Campos obligatorios que el desarrollador no llena (los llena otra área).
     pub ignored_fields: Vec<String>,
+    /// Campos que ClickUp no marca como obligatorios pero que el desarrollador debe
+    /// llenar. Solo se piden en las listas donde existen.
+    pub extra_required: Vec<String>,
+    pub notify: NotifySettings,
+    /// Carpetas de repositorios locales para sugerir rama y merge request.
+    pub repo_paths: Vec<String>,
     pub email: EmailSettings,
     /// Tickets agregados a mano (ids internos). ClickUp no devuelve en la búsqueda
     /// de "asignadas a mí" las tareas compartidas sueltas ("Shared with me").
@@ -187,6 +230,9 @@ impl Default for Settings {
                 "Rol Validador".into(),
                 "N.º de semana del año".into(),
             ],
+            extra_required: DEFAULT_EXTRA_REQUIRED.iter().map(|x| (*x).to_owned()).collect(),
+            notify: NotifySettings::default(),
+            repo_paths: vec![],
             email: EmailSettings::default(),
             extra_task_ids: vec![],
         }
@@ -214,10 +260,17 @@ impl Settings {
     }
 
     pub fn load(dir: &Path) -> Self {
-        std::fs::read_to_string(Self::path(dir))
+        let mut s: Self = std::fs::read_to_string(Self::path(dir))
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // Campos exigidos agregados en versiones nuevas.
+        for d in DEFAULT_EXTRA_REQUIRED {
+            if !s.extra_required.iter().any(|x| x.trim().eq_ignore_ascii_case(d)) {
+                s.extra_required.push((*d).to_owned());
+            }
+        }
+        s
     }
 
     /// Escritura atómica: archivo temporal + rename, para no corromper el JSON

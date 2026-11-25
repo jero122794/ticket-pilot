@@ -285,6 +285,24 @@ impl Db {
         })
     }
 
+    /// Borra las sesiones finalizadas antes de `before` (con sus tramos y pausas):
+    /// esa historia ya está en ClickUp como registros de tiempo y fechas. Solo se
+    /// conserva lo abierto y lo de hoy (para el reloj, el total del día y el correo).
+    pub fn purge_finished(&self, before: i64) -> AppResult<usize> {
+        let n = self.tx(|c| {
+            let old = "SELECT id FROM sessions WHERE state = 'stopped' AND COALESCE(ended_at, updated_at) < ?1";
+            c.execute(&format!("DELETE FROM segments WHERE session_id IN ({old})"), [before])?;
+            c.execute(&format!("DELETE FROM pauses WHERE session_id IN ({old})"), [before])?;
+            c.execute("DELETE FROM sessions WHERE state = 'stopped' AND COALESCE(ended_at, updated_at) < ?1", [before])
+        })?;
+        // Devuelve al disco el espacio del registro WAL y de las filas borradas.
+        self.with(|c| {
+            c.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
+            c.execute_batch("VACUUM")
+        })?;
+        Ok(n)
+    }
+
     pub fn used_pause_slots(&self, task_id: &str) -> AppResult<Vec<i64>> {
         self.with(|c| {
             let mut st = c.prepare("SELECT slot FROM pauses WHERE task_id = ?1 AND slot > 0")?;

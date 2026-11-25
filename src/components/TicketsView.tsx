@@ -11,6 +11,8 @@ interface Props {
   snap: Snapshot;
   act: Act;
   onFill: (taskId: string, finish?: boolean) => void;
+  /** Abre el detalle del ticket (descripción, comentarios, estado, tiempo). */
+  onOpen: (taskId: string) => void;
 }
 
 type Filter = Bucket | "open";
@@ -33,7 +35,7 @@ const PUNCH_LABEL: Record<Punch["kind"], string> = {
 
 type StopTarget = { id: string; label: string; url: string };
 
-export default function TicketsView({ snap, act, onFill }: Props) {
+export default function TicketsView({ snap, act, onFill, onOpen }: Props) {
   const [filter, setFilter] = useState<Filter>("open");
   const [q, setQ] = useState("");
   const [pauseOpen, setPauseOpen] = useState(false);
@@ -52,7 +54,7 @@ export default function TicketsView({ snap, act, onFill }: Props) {
 
   return (
     <>
-      <NowPanel snap={snap} act={act} onPause={() => setPauseOpen(true)} onStop={setStopTarget} onFill={onFill} />
+      <NowPanel snap={snap} act={act} onPause={() => setPauseOpen(true)} onStop={setStopTarget} onFill={onFill} onOpen={onOpen} />
 
       <div className="stack" style={{ gap: 10 }}>
         <div className="listbar">
@@ -90,7 +92,7 @@ export default function TicketsView({ snap, act, onFill }: Props) {
             </span>
           </div>
           {rows.map((t) => (
-            <Row key={t.id} t={t} act={act} onPause={() => setPauseOpen(true)} onStop={setStopTarget} onFill={onFill} />
+            <Row key={t.id} t={t} act={act} onPause={() => setPauseOpen(true)} onStop={setStopTarget} onFill={onFill} onOpen={onOpen} />
           ))}
           {rows.length === 0 && (
             <div className="empty">
@@ -118,12 +120,14 @@ function NowPanel({
   onPause,
   onStop,
   onFill,
+  onOpen,
 }: {
   snap: Snapshot;
   act: Act;
   onPause: () => void;
   onStop: (t: StopTarget) => void;
   onFill: (id: string, finish?: boolean) => void;
+  onOpen: (id: string) => void;
 }) {
   const cur = snap.current;
   const now = useNow(cur?.state === "running");
@@ -163,7 +167,11 @@ function NowPanel({
         {running ? "ahora" : cur.offShift ? "fuera de turno" : "en pausa"} <b>{cur.label}</b>
       </span>
       <div className="timecard__main">
-        <h2 className="timecard__title">{cur.name}</h2>
+        <h2 className="timecard__title">
+          <button type="button" className="linkish" onClick={() => onOpen(cur.taskId)} title="Ver detalle, comentarios y tiempo">
+            {cur.name}
+          </button>
+        </h2>
         <Clock className="clock" state={cur.state} text={clock(liveWorked(cur, now))} />
         <span className="timecard__status">
           {running
@@ -174,6 +182,7 @@ function NowPanel({
           {cur.pauseCount > 0 && `, ${cur.pauseCount} ${cur.pauseCount === 1 ? "pausa" : "pausas"}`}
           {running && cur.shiftEndAt && `, se pausa sola a las ${hhmm(cur.shiftEndAt)}`}
         </span>
+        <Estimate worked={liveWorked(cur, now)} estimate={cur.estimateMs} onFill={() => onFill(cur.taskId)} />
         <div className="timecard__actions">
           {running ? (
             <Button variant="primary" size="lg" onClick={onPause}>
@@ -199,6 +208,25 @@ function NowPanel({
       </div>
       <PunchLog cur={cur} />
     </section>
+  );
+}
+
+/** Trabajado frente a lo estimado en ClickUp. Sin estimación, invita a llenarla. */
+function Estimate({ worked, estimate, onFill }: { worked: number; estimate?: number | null; onFill: () => void }) {
+  if (!estimate) {
+    return (
+      <button type="button" className="ticket__missing" onClick={onFill}>
+        sin estimación de horas
+      </button>
+    );
+  }
+  const pct = Math.round((worked / estimate) * 100);
+  const over = worked > estimate;
+  return (
+    <span className="estimate" data-over={over}>
+      {duration(worked)} de {duration(estimate)} estimadas ({pct} %)
+      {over && `, ${duration(worked - estimate)} por encima`}
+    </span>
   );
 }
 
@@ -245,12 +273,14 @@ function Row({
   onPause,
   onStop,
   onFill,
+  onOpen,
 }: {
   t: Ticket;
   act: Act;
   onPause: () => void;
   onStop: (t: StopTarget) => void;
   onFill: (id: string, finish?: boolean) => void;
+  onOpen: (id: string) => void;
 }) {
   return (
     <div className="ticket" role="row" data-active={t.sessionState === "running"}>
@@ -261,7 +291,7 @@ function Row({
         {t.label}
       </span>
       <div role="cell" style={{ minWidth: 0 }}>
-        <div className="ticket__name truncate" title={t.name}>
+        <button type="button" className="ticket__name truncate linkish" title={`${t.name}\nVer detalle`} onClick={() => onOpen(t.id)}>
           {t.name}
           {t.manual && (
             <span className="muted" title="Compartido contigo; agregado por enlace">
@@ -269,7 +299,7 @@ function Row({
               [compartido]
             </span>
           )}
-        </div>
+        </button>
         {t.missingFields.length > 0 && (
           <button type="button" className="ticket__missing" title={t.missingFields.join(", ")} onClick={() => onFill(t.id)}>
             faltan {t.missingFields.length} {t.missingFields.length === 1 ? "campo" : "campos"}

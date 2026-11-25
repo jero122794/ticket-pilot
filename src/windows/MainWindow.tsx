@@ -9,15 +9,18 @@ import { Button, IconButton, Spinner, useToast } from "../ui";
 import TicketsView from "../components/TicketsView";
 import PendingView from "../components/PendingView";
 import SyncView from "../components/SyncView";
+import ReportsView from "../components/ReportsView";
 import SettingsView from "../components/SettingsView";
 import FillFieldsDialog from "../components/FillFieldsDialog";
+import TaskDetailDialog from "../components/TaskDetailDialog";
 
-export type View = "tickets" | "pending" | "sync" | "settings";
+export type View = "tickets" | "pending" | "reports" | "sync" | "settings";
 export type Act = (fn: () => Promise<Snapshot>) => Promise<boolean>;
 
 const VIEWS: { id: View; label: string; cmd: string }[] = [
   { id: "tickets", label: "mis tickets", cmd: "tickets --asignados-a mí" },
   { id: "pending", label: "pendientes", cmd: "campos --pendientes" },
+  { id: "reports", label: "reportes", cmd: "reporte --tiempo" },
   { id: "sync", label: "sincronización", cmd: "sync --estado" },
   { id: "settings", label: "ajustes", cmd: "config --editar" },
 ];
@@ -33,12 +36,16 @@ export default function MainWindow() {
   /** Formulario de campos abierto; `finish` = completar para poder finalizar. */
   const [fill, setFill] = useState<{ id: string; finish: boolean } | null>(null);
   const openFill = (id: string, finish = false) => setFill({ id, finish });
+  /** Ticket abierto en el panel de detalle. */
+  const [detail, setDetail] = useState<string | null>(null);
   const { notify, view: toast } = useToast();
 
   // Rust pide cambiar de vista (bandeja, widget, recordatorios). "fill:<id>" abre el formulario.
   useEffect(() => {
     const un = listen<string>("navigate", (e) => {
-      if (e.payload.startsWith("fill:")) {
+      if (e.payload.startsWith("detail:")) {
+        setDetail(e.payload.slice(7));
+      } else if (e.payload.startsWith("fill:")) {
         setView("pending");
         setFill({ id: e.payload.slice(5), finish: false });
       } else if (e.payload.startsWith("finish:")) {
@@ -51,7 +58,7 @@ export default function MainWindow() {
     };
   }, []);
 
-  // Atajos 1–4 para cambiar de sección (fuera de campos de texto).
+  // Atajos 1–5 para cambiar de sección (fuera de campos de texto).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
@@ -141,13 +148,22 @@ export default function MainWindow() {
               </Button>
             </div>
           )}
-          {view === "tickets" && <TicketsView snap={snap} act={act} onFill={openFill} />}
-          {view === "pending" && <PendingView snap={snap} onFill={openFill} />}
+          {view === "tickets" && <TicketsView snap={snap} act={act} onFill={openFill} onOpen={setDetail} />}
+          {view === "pending" && <PendingView snap={snap} onFill={openFill} onOpen={setDetail} />}
+          {view === "reports" && <ReportsView />}
           {view === "sync" && <SyncView snap={snap} act={act} />}
           {view === "settings" && <SettingsView snap={snap} notify={notify} />}
         </div>
       </main>
 
+      <TaskDetailDialog
+        taskId={detail}
+        onClose={() => setDetail(null)}
+        onOpen={setDetail}
+        onFill={openFill}
+        act={act}
+        notify={notify}
+      />
       <FillFieldsDialog taskId={fill?.id ?? null} finish={!!fill?.finish} onClose={() => setFill(null)} notify={notify} />
       {toast}
     </div>

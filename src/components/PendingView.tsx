@@ -5,7 +5,15 @@ import type { Snapshot } from "../lib/api";
 import { Button, IconButton } from "../ui";
 
 /** Tickets abiertos con campos obligatorios sin llenar. */
-export default function PendingView({ snap, onFill }: { snap: Snapshot; onFill: (taskId: string, finish?: boolean) => void }) {
+export default function PendingView({
+  snap,
+  onFill,
+  onOpen,
+}: {
+  snap: Snapshot;
+  onFill: (taskId: string, finish?: boolean) => void;
+  onOpen: (taskId: string) => void;
+}) {
   const rows = snap.tickets.filter((t) => t.missingFields.length > 0);
   const total = rows.reduce((n, t) => n + t.missingFields.length, 0);
 
@@ -29,10 +37,10 @@ export default function PendingView({ snap, onFill }: { snap: Snapshot; onFill: 
           <article key={t.id} className="pending">
             <span className="code">{t.label}</span>
             <div style={{ minWidth: 0 }}>
-              <div className="truncate" title={t.name}>
+              <button type="button" className="truncate linkish" title={t.name} onClick={() => onOpen(t.id)}>
                 {t.sessionState && <span className="status-dot" data-state={t.sessionState} style={{ marginRight: 8 }} />}
                 {t.name}
-              </div>
+              </button>
               <div className="pending__fields">{t.missingFields.join(", ")}</div>
             </div>
             <div className="row">

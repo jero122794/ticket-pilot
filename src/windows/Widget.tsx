@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { ArrowUpRight, ClipboardList, CloudOff, LayoutDashboard, Minus, Pause, Play, Search, Square } from "lucide-react";
+import { ClipboardList, FileText, CloudOff, LayoutDashboard, Minus, Pause, Play, Search, Square } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { api, asAppError, liveWorked, useNow, useSnapshot } from "../lib/api";
@@ -91,8 +91,8 @@ export default function Widget() {
           </IconButton>
         )}
         {cur && (
-          <IconButton size="sm" label="Abrir en ClickUp" onClick={() => api.openUrl(cur.url)}>
-            <ArrowUpRight />
+          <IconButton size="sm" label="Ver detalle, comentarios y tiempo" onClick={() => api.showMain(`detail:${cur.taskId}`)}>
+            <FileText />
           </IconButton>
         )}
         <IconButton size="sm" label="Abrir panel" onClick={() => api.showMain()}>

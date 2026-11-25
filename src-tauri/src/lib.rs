@@ -10,10 +10,12 @@
 mod clickup;
 mod commands;
 mod config;
+mod detail;
 mod db;
 mod error;
 mod fields;
 mod mail;
+mod reports;
 mod secrets;
 mod state;
 mod sync;
@@ -155,6 +157,19 @@ pub fn run() {
             commands::resize_widget,
             commands::get_autostart,
             commands::set_autostart,
+            reports::get_report,
+            detail::get_task_detail,
+            detail::get_comments,
+            detail::get_task_members,
+            detail::add_comment,
+            detail::set_task_status,
+            detail::set_checklist_item,
+            detail::get_time_entries,
+            detail::add_time_entry,
+            detail::update_time_entry,
+            detail::delete_time_entry,
+            detail::git_suggestions,
+            detail::upload_evidence,
             fields::get_fill_form,
             fields::save_fields,
             fields::list_required_fields,

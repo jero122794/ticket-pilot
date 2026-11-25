@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { ArrowUpRight, Ban } from "lucide-react";
 
 import { api, asAppError } from "../lib/api";
-import type { EditableField, FieldInput, FillForm } from "../lib/api";
-import { Button, Checkbox, Dialog, Field, Input, Select, Spinner, Textarea } from "../ui";
+import type { EditableField, FieldInput, FillForm, GitHint } from "../lib/api";
+import { Button, Checkbox, Dialog, Field, Input, Select, Spinner } from "../ui";
+import { EvidenceEditor } from "./Evidence";
 
 type Value = string | boolean | string[];
 
@@ -20,6 +21,10 @@ function toLocalInput(ms: number): string {
   return new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
+/** Campos que se pueden llenar con la rama o el merge request del repositorio local. */
+const gitKind = (name: string): "branch" | "mr" | null =>
+  /merge request|\bmr\b|pull request/i.test(name) ? "mr" : /branch|rama/i.test(name) ? "branch" : null;
+
 const isEmpty = (v: Value | undefined) => v === undefined || v === "" || (Array.isArray(v) && v.length === 0);
 
 export default function FillFieldsDialog({ taskId, finish = false, onClose, notify }: Props) {
@@ -27,6 +32,7 @@ export default function FillFieldsDialog({ taskId, finish = false, onClose, noti
   const [values, setValues] = useState<Record<string, Value>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [hints, setHints] = useState<GitHint[]>([]);
 
   const load = (id: string) =>
     api
@@ -42,6 +48,32 @@ export default function FillFieldsDialog({ taskId, finish = false, onClose, noti
   }, [taskId]);
 
   const set = (id: string, v: Value) => setValues((prev) => ({ ...prev, [id]: v }));
+
+  // Rama y MR: se leen de los repositorios configurados en Ajustes.
+  useEffect(() => {
+    setHints([]);
+    if (form && form.fields.some((f) => gitKind(f.name))) api.gitSuggestions(form.label).then(setHints).catch(() => {});
+  }, [form?.taskId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function gitChips(f: EditableField) {
+    const kind = gitKind(f.name);
+    if (!kind || hints.length === 0) return null;
+    return (
+      <div className="chips" role="group" aria-label={`Sugerencias para ${f.name}`} style={{ marginTop: 6 }}>
+        {hints.slice(0, 4).map((h) => {
+          const value = kind === "mr" ? h.mrUrl : h.branchUrl ?? h.branch;
+          if (!value) return null;
+          return (
+            <button key={`${h.repo}-${h.branch}`} type="button" className="chip" onClick={() => set(f.id, value)} title={value}>
+              {h.matches ? "✓ " : ""}
+              {kind === "mr" ? "MR de " : "rama "}
+              {h.repo}:{h.branch}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
 
   async function notMine(f: EditableField) {
     try {
@@ -99,7 +131,9 @@ export default function FillFieldsDialog({ taskId, finish = false, onClose, noti
     const v = values[f.id];
     switch (f.kind) {
       case "text":
-        return <Textarea id={id} rows={3} value={(v as string) ?? ""} onChange={(e) => set(f.id, e.target.value)} />;
+        return form ? (
+          <EvidenceEditor id={id} taskId={form.taskId} rows={3} value={(v as string) ?? ""} onChange={(x) => set(f.id, x)} />
+        ) : null;
       case "number":
       case "currency":
         return <Input id={id} type="number" inputMode="decimal" value={(v as string) ?? ""} onChange={(e) => set(f.id, e.target.value)} />;
@@ -233,6 +267,7 @@ export default function FillFieldsDialog({ taskId, finish = false, onClose, noti
               <Field label={f.name} htmlFor={`f-${f.id}`}>
                 {control(f)}
               </Field>
+              {gitChips(f)}
             </div>
             <Button variant="ghost" size="sm" style={{ marginTop: 22, color: "var(--muted-foreground)" }} onClick={() => notMine(f)}>
               <Ban /> No me aplica

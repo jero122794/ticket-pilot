@@ -14,11 +14,12 @@ Funciona en **Linux, macOS y Windows**.
 4. [Uso diario](#uso-diario)
 5. [Qué escribe en ClickUp](#qué-escribe-en-clickup)
 6. [Campos pendientes](#campos-pendientes)
-7. [Resumen diario por correo](#resumen-diario-por-correo)
-8. [Ajustes](#ajustes)
-9. [Sin conexión y sincronización](#sin-conexión-y-sincronización)
-10. [Solución de problemas](#solución-de-problemas)
-11. [Para desarrolladores](#para-desarrolladores)
+7. [Reportes](#reportes)
+8. [Resumen diario por correo](#resumen-diario-por-correo)
+9. [Ajustes](#ajustes)
+10. [Sin conexión y sincronización](#sin-conexión-y-sincronización)
+11. [Solución de problemas](#solución-de-problemas)
+12. [Para desarrolladores](#para-desarrolladores)
 
 ---
 
@@ -113,14 +114,38 @@ Pulsa **finalizar** y confirma.
 - TicketPilot no te pide las fechas que pone él mismo (inicio, fin y reabierto).
 - Al finalizar, el ticket pasa al estado configurado («listo para release» por defecto) y se deja un comentario con el tiempo total.
 
+### Detalle del ticket
+
+Toca el nombre de un ticket (en la lista, en el ticket activo, en Pendientes o el botón de detalle de la ventana flotante) y se abre su panel. Tiene todo lo necesario para trabajarlo sin abrir ClickUp:
+
+- **Estado:** cámbialo a cualquier estado de la lista. Al devolver, reabrir o bloquear, la app pide el motivo y lo deja como comentario. Para «listo para release» usa **Finalizar**.
+- **Detalle:** descripción, requerimiento, criterios de aceptación y demás campos de texto; prioridad, proyecto y otros campos; fechas; adjuntos con vista previa de imágenes; vencimiento de SLA y de la entrega estimada.
+- **Comentarios:** lee el hilo y publica con menciones (**@ mencionar**). `Ctrl + Enter` publica.
+- **Checklist y subtareas:** marca ítems del checklist y abre las subtareas en el mismo panel.
+- **Tiempo:** tus registros de tiempo en ClickUp para ese ticket. Si olvidaste darle play o pausa, corrige las horas, borra un registro o agrega uno a mano.
+
+Al llenar los campos de rama y merge request, el formulario sugiere la rama actual de tus repositorios (se configuran en **Ajustes › Repositorios**). Marca con ✓ la rama que contiene el código del ticket.
+
+### Avisos
+
+Además de los recordatorios de campos, te llega una notificación cuando:
+
+- te asignan un ticket nuevo;
+- otra persona cambia el estado de uno de tus tickets (por ejemplo, lo reabre o QA lo devuelve);
+- alguien comenta en uno de tus tickets abiertos;
+- se acerca o pasa la «Fecha límite SLA» o la «Fecha estimada entrega» (por defecto, 24 horas antes).
+
+Cada aviso se activa o desactiva en **Ajustes › Avisos**.
+
 ### El panel
 
 | Sección | Tecla | Para qué sirve |
 |---|---|---|
 | Mis tickets | `1` | El ticket activo con su reloj y sus **marcas** (hora de inicio, pausas con su motivo y reanudaciones), y la lista de tickets con filtros por estado y buscador. |
 | Pendientes | `2` | Tickets con campos obligatorios sin llenar y el botón **completar**. |
-| Sincronización | `3` | Cambios que aún no llegan a ClickUp y errores, si los hay. |
-| Ajustes | `4` | Cuenta, comportamiento, campos, recordatorios y correo. |
+| Reportes | `3` | Tiempo y tickets ejecutados por día, semana o mes. Ver [Reportes](#reportes). |
+| Sincronización | `4` | Cambios que aún no llegan a ClickUp y errores, si los hay. |
+| Ajustes | `5` | Cuenta, comportamiento, campos, recordatorios y correo. |
 
 En la parte superior verás cuánto llevas trabajado hoy, el botón para sincronizar ahora y el que muestra u oculta el cronómetro flotante.
 
@@ -128,7 +153,7 @@ En la parte superior verás cuánto llevas trabajado hoy, el botón para sincron
 
 | Dónde | Tecla | Acción |
 |---|---|---|
-| Panel | `1` `2` `3` `4` | Cambiar de sección. |
+| Panel | `1` a `5` | Cambiar de sección. |
 | Buscador del cronómetro | `↑` `↓` `Enter` | Elegir ticket. |
 | Buscador del cronómetro | `Esc` | Cancelar. |
 | Motivo de pausa | `Ctrl + Enter` | Pausar. |
@@ -185,6 +210,23 @@ TicketPilot revisa qué campos **obligatorios** de cada ticket están vacíos.
 
   Los tipos que no se pueden editar desde la app tienen un enlace para abrirlos en ClickUp.
 - **«No me aplica»:** hay campos obligatorios que llena otra área (soporte, QA, analítica). Márcalos con **no me aplica** en el formulario y no se te volverán a pedir en ningún ticket. Para revisarlos o reactivarlos, ve a **Ajustes › Campos que lleno yo**.
+- **«Observaciones» (evidencias de pruebas):** también se exige aunque ClickUp no lo marque obligatorio. En el formulario y en el detalle del ticket puedes **pegar pantallazos con `Ctrl + V`** o adjuntarlos con **adjuntar pantallazo**. Cada imagen se sube como adjunto del ticket y su enlace queda en el texto, igual que al pegarla en ClickUp; se ven como miniaturas. Desde el detalle, **agregar evidencias** suma sin borrar lo que ya había. Los demás campos de texto largo aceptan pantallazos de la misma forma.
+- **«Estimación en Horas»:** en ClickUp no está marcado como obligatorio, pero TicketPilot lo pide igual (en pendientes, en los recordatorios y para poder finalizar), solo en las listas que tienen ese campo. El panel del ticket activo muestra cuánto llevas frente a lo estimado, y **Reportes** compara el tiempo real con la estimación.
+
+---
+
+## Reportes
+
+En **Reportes** (tecla `3`) eliges **día**, **semana** (lunes a domingo) o **mes**. Con las flechas pasas a períodos anteriores. Para cada período ves:
+
+- **Tiempo registrado** en total y **promedio por ticket**.
+- **Tickets trabajados:** los que tienen tiempo registrado en el período.
+- **Tickets finalizados:** los asignados a ti con «Fecha Fin» dentro del período.
+- **Por día** (en semana y mes): horas y cantidad de tickets de cada día.
+- **Estimado:** qué porcentaje del tiempo estimado usaste en los tickets finalizados que tenían «Estimación en Horas».
+- La lista de tickets con su tiempo, lo estimado y la fecha en que se finalizaron.
+
+Los datos se consultan a **ClickUp** cada vez que abres el reporte; no se guardan en tu equipo. El tiempo sale de tus registros de tiempo de ClickUp, así que también cuenta lo que registres directamente allá. Lo que todavía está en cola de sincronización aparece cuando llegue a ClickUp. Sin conexión, el reporte no se puede consultar.
 
 ---
 
@@ -221,6 +263,8 @@ El correo trae el tiempo trabajado hoy por ticket, los contadores y los campos p
 | Cuenta de ClickUp | Conectar o desconectar el token. Elegir el workspace, si tienes varios. Abrir la app al iniciar sesión. |
 | Play, Pausa y Stop | El estado al iniciar y al finalizar. Pedir motivo al pausar. Abrir el ticket en el navegador al dar Play. |
 | Campos que lleno yo | Qué campos obligatorios te aplican a ti. |
+| Avisos | Ticket nuevo, cambio de estado, comentarios y vencimientos, y con cuántas horas de anticipación avisar. |
+| Repositorios | Carpetas de tus proyectos con Git, para sugerir rama y merge request. |
 | Jornada laboral | Días que trabajas con su hora de entrada y de salida. Pausar al fin de turno (solo en la app, sin registrar pausa en ClickUp). |
 | Recordatorios | Cada cuántos minutos (0 = apagados) y cada cuánto recargar los tickets. Solo llegan dentro de la jornada. |
 | Resumen por correo | Servidor, cuenta, destinatarios y hora. |
@@ -255,6 +299,10 @@ Si cambias algo, aparece abajo la barra **guardar ajustes**.
 | El correo falla al enviar | Con Gmail, usa una **contraseña de aplicación**, no tu contraseña normal. Revisa servidor y puerto. |
 | (Linux) No guarda el token | Instala y desbloquea un llavero: `sudo apt install gnome-keyring`. |
 | No encuentro la ventana | Busca el ícono en la bandeja del sistema: clic izquierdo abre el panel y el clic derecho muestra el menú. |
+
+### Qué guarda la app en tu equipo
+
+Lo mínimo para que el cronómetro funcione sin conexión: el ticket abierto con sus tramos y pausas, lo trabajado hoy (para el total del día y el correo) y la cola de cambios que aún no llegan a ClickUp. Una vez al día se borran las sesiones finalizadas antes de hoy (ya están en ClickUp como registros de tiempo y fechas) y se compacta el archivo. Si hay cambios en cola, la limpieza espera. Reportes, detalle, comentarios y evidencias se consultan a ClickUp y no se guardan. En uso normal, la base ocupa unos pocos KB.
 
 ### Dónde se guardan los datos
 
@@ -325,7 +373,17 @@ cd src-tauri && cargo check        # verificar el backend en Rust
 npm run app:build
 ```
 
-Los instaladores quedan en `src-tauri/target/release/bundle/`. Cada sistema genera **solo sus propios** instaladores: `.deb`, `.rpm` y `.AppImage` en Linux; `.dmg` y `.app` en macOS; `.msi` y `.exe` en Windows. Para generarlos todos desde un mismo repositorio, usa GitHub Actions con [`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action).
+Los instaladores quedan en `src-tauri/target/release/bundle/`. Cada sistema genera **solo sus propios** instaladores: `.deb`, `.rpm` y `.AppImage` en Linux; `.dmg` y `.app` en macOS; `.msi` y `.exe` en Windows. Para generar solo el `.deb`: `npx tauri build --bundles deb`.
+
+#### Todos los sistemas con GitHub Actions
+
+El flujo [`.github/workflows/release.yml`](.github/workflows/release.yml) compila en máquinas de GitHub los instaladores de **Windows, macOS (Apple Silicon e Intel) y Linux**, y los deja en un **borrador de Release**:
+
+1. Sube la versión en `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` y `package.json` (por ejemplo `0.2.0`).
+2. Haz commit y crea la etiqueta: `git tag v0.2.0 && git push origin main v0.2.0`. También se puede lanzar a mano en **Actions › Instaladores › Run workflow**.
+3. Cuando termine (unos 15–20 minutos), revisa el borrador en **Releases** y publícalo.
+
+Sin certificado de firma de código, Windows muestra «editor desconocido» la primera vez (*Más información › Ejecutar de todos modos*) y macOS pide abrirla con *clic derecho › Abrir*.
 
 ### Arquitectura
 

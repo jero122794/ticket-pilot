@@ -33,6 +33,12 @@ pub struct Cache {
     pub shared_skip: HashMap<String, i64>,
     /// Último recordatorio enviado por ticket (ms).
     pub reminded: HashMap<String, i64>,
+    /// Último comentario visto por ticket (ms), para avisar solo de los nuevos.
+    pub comments_seen: HashMap<String, i64>,
+    /// Avisos de vencimiento ya enviados ("ticket|campo|etapa").
+    pub due_notified: std::collections::HashSet<String>,
+    /// Avisos pendientes de mostrar (título, cuerpo); los vacía el bucle de fondo.
+    pub notices: Vec<(String, String)>,
 }
 
 pub struct AppState {
@@ -182,6 +188,17 @@ pub fn missing_fields(task: &Task, defs: Option<&Vec<FieldDef>>, s: &Settings, s
             .filter(|f| f.required.unwrap_or(false) && !matches!(f.kind.as_str(), "formula" | "multi_key"))
             .for_each(|f| push(&f.name)),
     }
+    // Obligatorios por decisión del equipo, aunque ClickUp no los marque.
+    for name in &s.extra_required {
+        let n = norm(name);
+        let exists = match defs {
+            Some(defs) => defs.iter().any(|d| norm(&d.name) == n),
+            None => task.custom_fields.iter().any(|f| norm(&f.name) == n),
+        };
+        if exists {
+            push(name);
+        }
+    }
     // Un ticket reabierto debe documentar cuándo y por qué.
     if bucket(task, s) == Bucket::Reopened {
         push(&s.fields.reopened_date);
@@ -210,6 +227,8 @@ pub struct TicketView {
     pub bucket: Bucket,
     pub missing_fields: Vec<String>,
     pub worked_ms: i64,
+    /// Horas estimadas en ClickUp (ms).
+    pub estimate_ms: Option<i64>,
     pub session_state: Option<String>,
     /// Agregado a mano por enlace (no llega en la búsqueda de asignadas).
     pub manual: bool,
@@ -244,6 +263,7 @@ pub struct CurrentView {
     pub off_shift: bool,
     /// Hora en que se pausará sola por fin de turno, si está corriendo.
     pub shift_end_at: Option<i64>,
+    pub estimate_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -309,7 +329,10 @@ pub async fn snapshot(state: &AppState, syncing: bool) -> AppResult<Snapshot> {
                 due_date: t.due_date,
                 bucket: b,
                 missing_fields: missing,
-                worked_ms: worked.get(&t.id).copied().unwrap_or(0),
+                // Lo local (incluye lo que aún no se envía) o lo registrado en ClickUp,
+                // que conserva la historia que la base local ya no guarda.
+                worked_ms: worked.get(&t.id).copied().unwrap_or(0).max(t.time_spent.unwrap_or(0)),
+                estimate_ms: t.estimate_ms(&s.fields.estimate),
                 session_state,
                 manual: s.extra_task_ids.contains(&t.id),
             }
@@ -330,8 +353,9 @@ pub async fn snapshot(state: &AppState, syncing: bool) -> AppResult<Snapshot> {
         Some(sess) => {
             let total = state.db.task_worked_ms(&sess.task_id, now)?;
             let open_start = state.db.open_segment_start(sess.id)?;
-            let closed = total - open_start.map(|st| now - st).unwrap_or(0);
             let task = cache.tasks.iter().find(|t| t.id == sess.task_id);
+            let local_closed = total - open_start.map(|st| now - st).unwrap_or(0);
+            let closed = local_closed.max(task.and_then(|t| t.time_spent).unwrap_or(0));
             let missing = task
                 .map(|t| missing_fields(t, cache.fields.get(&t.list.id), &s, &auto_filled(&s)))
                 .unwrap_or_default();
@@ -340,6 +364,7 @@ pub async fn snapshot(state: &AppState, syncing: bool) -> AppResult<Snapshot> {
                 .filter(|_| s.auto_pause_shift)
                 .and_then(|st| crate::tracker::shift_end_for(&s, st));
             Some(CurrentView {
+                estimate_ms: task.and_then(|t| t.estimate_ms(&s.fields.estimate)),
                 off_shift,
                 shift_end_at,
                 pause_count: state.db.pause_count(&sess.task_id)?,
